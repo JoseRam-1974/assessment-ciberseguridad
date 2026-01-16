@@ -14,11 +14,15 @@ def leer_tablas_docx(file_path):
         data = []
         for table in doc.tables:
             for row in table.rows:
-                data.append([cell.text.strip() for cell in row.cells])
-        df = pd.DataFrame(data[1:], columns=data[0])
+                # Solo tomamos el contenido de las primeras dos celdas de cada fila
+                fila_datos = [cell.text.strip() for cell in row.cells[:2]]
+                data.append(fila_datos)
+        
+        # Forzamos que el DataFrame use solo las primeras dos columnas
+        df = pd.DataFrame(data[1:], columns=["Preguntas", "Alternativas"])
         return df
     except Exception as e:
-        st.error(f"Error al leer {file_path}: {e}")
+        st.error(f"Error técnico al procesar el documento: {e}")
         return None
 
 def generar_pdf(recs_usuario):
@@ -117,3 +121,4 @@ else:
     if st.button("Realizar nuevo test"):
         st.session_state.update({'paso': 0, 'respuestas': [], 'finalizado': False})
         st.rerun()
+
