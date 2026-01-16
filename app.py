@@ -4,76 +4,47 @@ from docx import Document
 from fpdf import FPDF
 import re
 
-# --- CONFIGURACIÓN DE PÁGINA ---
-st.set_page_config(page_title="Assessment Ciberseguridad", page_icon="🛡️", layout="centered")
+# --- CONFIGURACIÓN ---
+st.set_page_config(page_title="Assessment Ciberseguridad", page_icon="🛡️")
 
-# --- FUNCIONES DE APOYO ---
-def leer_tablas_docx(file_path):
+def leer_tablas_seguro(file_path, columnas_esperadas):
     try:
         doc = Document(file_path)
         data = []
         for table in doc.tables:
             for row in table.rows:
-                # Solo tomamos el contenido de las primeras dos celdas de cada fila
-                fila_datos = [cell.text.strip() for cell in row.cells[:2]]
-                data.append(fila_datos)
-        
-        # Forzamos que el DataFrame use solo las primeras dos columnas
-        df = pd.DataFrame(data[1:], columns=["Preguntas", "Alternativas"])
-        return df
+                # Tomamos solo las celdas necesarias para evitar el error de "4 columnas"
+                data.append([cell.text.strip() for cell in row.cells[:len(columnas_esperadas)]])
+        return pd.DataFrame(data[1:], columns=columnas_esperadas)
     except Exception as e:
-        st.error(f"Error técnico al procesar el documento: {e}")
+        st.error(f"Error al cargar {file_path}: {e}")
         return None
 
-def generar_pdf(recs_usuario):
-    pdf = FPDF()
-    pdf.add_page()
-    pdf.set_font("Arial", 'B', 16)
-    pdf.cell(200, 10, txt="Resultado del Assessment de Ciberseguridad", ln=True, align='C')
-    pdf.ln(10)
-    
-    for item in recs_usuario:
-        pdf.set_font("Arial", 'B', 12)
-        pdf.multi_cell(0, 10, txt=f"Recomendación: {item['Recomendaciones']}")
-        pdf.set_font("Arial", '', 11)
-        # Limpieza de texto para evitar errores de caracteres en PDF
-        texto_limpio = item['Complemento'].encode('latin-1', 'replace').decode('latin-1')
-        pdf.multi_cell(0, 10, txt=texto_limpio)
-        pdf.ln(5)
-    return pdf.output(dest='S').encode('latin-1')
-
 # --- CARGA DE DATOS ---
-df_preguntas = leer_tablas_docx("01. Preguntas.docx")
-df_respuestas = leer_tablas_docx("02. Respuestas.docx")
+df_preguntas = leer_tablas_seguro("01. Preguntas.docx", ["Preguntas", "Alternativas"])
+df_respuestas = leer_tablas_seguro("02. Respuestas.docx", ["Alternativas", "Complemento", "Recomendaciones"])
 
-# --- ESTADO DE LA SESIÓN ---
 if 'paso' not in st.session_state:
-    st.session_state.update({'paso': 0, 'respuestas': [], 'finalizado': False})
+    st.session_state.update({'paso': 0, 'respuestas_usuario': [], 'finalizado': False})
 
-# --- INTERFAZ DE USUARIO ---
+# --- INTERFAZ ---
 st.title("🛡️ Diagnóstico de Madurez CS")
-st.info("Responda las siguientes preguntas para obtener su informe técnico.")
 
 if not st.session_state.finalizado:
-    # Obtener pregunta actual
     fila = df_preguntas.iloc[st.session_state.paso]
-    pregunta_texto = fila['Preguntas']
+    st.subheader(f"Pregunta {st.session_state.paso + 1} de {len(df_preguntas)}")
+    st.write(f"**{fila['Preguntas']}**")
+    
     opciones = [opt.strip() for opt in fila['Alternativas'].split('\n') if opt.strip()]
     
-    st.subheader(f"Pregunta {st.session_state.paso + 1} de {len(df_preguntas)}")
-    st.write(f"**{pregunta_texto}**")
-    
-    # Lógica de Selección Múltiple vs Única
-    es_multiple = "Selección Múltiple" in pregunta_texto
-    
-    if es_multiple:
-        seleccion = st.multiselect("Puede marcar varias opciones:", opciones)
+    if "Selección Múltiple" in fila['Preguntas']:
+        seleccion = st.multiselect("Seleccione una o más opciones:", opciones)
     else:
         seleccion = st.radio("Seleccione una opción:", opciones, index=None)
 
     if st.button("Continuar"):
         if seleccion:
-            st.session_state.respuestas.append(seleccion)
+            st.session_state.respuestas_usuario.append(seleccion)
             if st.session_state.paso < len(df_preguntas) - 1:
                 st.session_state.paso += 1
                 st.rerun()
@@ -81,44 +52,70 @@ if not st.session_state.finalizado:
                 st.session_state.finalizado = True
                 st.rerun()
         else:
-            st.warning("Por favor, elija una respuesta.")
+            st.warning("Seleccione una respuesta para avanzar.")
 
+# --- GENERACIÓN DEL INFORME FINAL ---
 else:
-    st.success("✅ Assessment completado con éxito.")
+    st.success("✅ Assessment completado. Analizando resultados...")
     
-    # --- PROCESAMIENTO DE RESULTADOS ---
-    recs_para_pdf = []
+    # 1. Procesar recomendaciones basadas en Fuente 2
+    informe_data = []
+    respuestas_positivas = 0
     
-    for respuesta_u in st.session_state.respuestas:
-        # Si es múltiple, iteramos cada selección; si es única, la tratamos como lista de 1
-        lista_resp = respuesta_u if isinstance(respuesta_u, list) else [respuesta_u]
+    for r_usuario in st.session_state.respuestas_usuario:
+        lista_r = r_usuario if isinstance(r_usuario, list) else [r_usuario]
+        for r in lista_r:
+            # Extraer código como '2.a' o '16.c'
+            codigo = re.search(r'(\d+\.[a-z])', r)
+            if codigo:
+                cod = codigo.group(1)
+                match = df_respuestas[df_respuestas['Alternativas'].str.contains(cod, na=False)]
+                if not match.empty:
+                    res = match.iloc[0]
+                    informe_data.append(res)
+                    # Contar como positivo si no es una opción de "NO" o "Lo desconozco"
+                    if "SI" in r.upper() or "Automatizado" in r:
+                        respuestas_positivas += 1
+
+    # 2. Calcular Nivel de Madurez
+    nivel = "Inicial"
+    if respuestas_positivas > 10: nivel = "Avanzado"
+    elif respuestas_positivas > 5: nivel = "Intermedio"
+
+    # 3. Mostrar Informe en Pantalla
+    st.header("📋 Informe Estratégico Final")
+    st.metric("Nivel de Madurez Detectado", nivel)
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        st.subheader("💡 Recomendaciones")
+        for i, item in enumerate(informe_data[:6]): # Mostrar las más relevantes
+            st.write(f"**{i+1}. {item['Recomendaciones']}**")
+    
+    with col2:
+        st.subheader("📝 Análisis Técnico")
+        for item in informe_data[:3]:
+            with st.expander(f"Detalle: {item['Recomendaciones']}"):
+                st.write(item['Complemento'])
+
+    # 4. Generación de PDF profesional
+    def exportar_pdf():
+        pdf = FPDF()
+        pdf.add_page()
+        pdf.set_font("Arial", 'B', 16)
+        pdf.cell(200, 10, "Reporte Ejecutivo de Ciberseguridad", ln=True, align='C')
+        pdf.ln(10)
+        pdf.set_font("Arial", '', 12)
+        pdf.cell(200, 10, f"Nivel de Madurez: {nivel}", ln=True)
+        pdf.ln(5)
         
-        for r in lista_resp:
-            # Extraer el código (ej: de '2.a) VPN' extraemos '2.a')
-            match_codigo = re.search(r'(\d+\.[a-z])', r)
-            if match_codigo:
-                codigo = match_codigo.group(1)
-                # Buscar en Fuente 2
-                match_resp = df_respuestas[df_respuestas['Alternativas'].str.contains(codigo, na=False)]
-                if not match_resp.empty:
-                    recs_para_pdf.append(match_resp.iloc[0].to_dict())
+        for item in informe_data:
+            pdf.set_font("Arial", 'B', 11)
+            pdf.multi_cell(0, 10, f"Recomendación: {item['Recomendaciones']}")
+            pdf.set_font("Arial", '', 10)
+            pdf.multi_cell(0, 8, item['Complemento'].encode('latin-1', 'replace').decode('latin-1'))
+            pdf.ln(4)
+        return pdf.output(dest='S').encode('latin-1')
 
-    # --- MOSTRAR RECOMENDACIONES EN PANTALLA ---
-    st.header("📋 Resumen de Recomendaciones")
-    for item in recs_para_pdf:
-        with st.expander(f"📌 {item['Recomendaciones']}"):
-            st.write(item['Complemento'])
-
-    # --- BOTÓN DE DESCARGA PDF ---
-    pdf_bytes = generar_pdf(recs_para_pdf)
-    st.download_button(
-        label="📥 Descargar Reporte PDF",
-        data=pdf_bytes,
-        file_name="Diagnostico_Ciberseguridad.pdf",
-        mime="application/pdf"
-    )
-
-    if st.button("Realizar nuevo test"):
-        st.session_state.update({'paso': 0, 'respuestas': [], 'finalizado': False})
-        st.rerun()
-
+    pdf_output = exportar_pdf()
+    st.download_button("📥 Descargar Informe Completo (PDF)", pdf_output, "Reporte_CS.pdf", "application/pdf")
