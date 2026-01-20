@@ -20,6 +20,39 @@ def leer_tablas_seguro(file_path, columnas_esperadas):
         st.error(f"Error al cargar {file_path}: {e}")
         return None
 
+# --- FORMULARIO DE CONTACTO ---
+if 'registro_completo' not in st.session_state:
+    st.session_state.registro_completo = False
+
+if not st.session_state.registro_completo:
+    st.subheader("📋 Registro de Contacto")
+    st.write("Por favor, ingresa tus datos para personalizar tu informe final.")
+    
+    with st.form("contacto_form"):
+        nombre = st.text_input("Nombre completo")
+        cargo = st.text_input("Cargo")
+        empresa = st.text_input("Empresa")
+        email = st.text_input("Mail corporativo")
+        telefono = st.text_input("Teléfono de contacto")
+        
+        submit_button = st.form_submit_button("Comenzar Assessment")
+        
+        if submit_button:
+            if nombre and email and empresa: # Campos obligatorios
+                st.session_state.datos_contacto = {
+                    "Nombre": nombre,
+                    "Cargo": cargo,
+                    "Empresa": empresa,
+                    "Email": email,
+                    "Telefono": telefono
+                }
+                st.session_state.registro_completo = True
+                st.rerun()
+            else:
+                st.error("Por favor, completa los campos obligatorios (Nombre, Email y Empresa).")
+    st.stop() # Detiene la ejecución hasta que se llene el formulario
+
+
 # --- CARGA DE DATOS ---
 df_preguntas = leer_tablas_seguro("01. Preguntas.docx", ["Preguntas", "Alternativas"])
 df_respuestas = leer_tablas_seguro("02. Respuestas.docx", ["Alternativas", "Complemento", "Recomendaciones"])
@@ -119,3 +152,4 @@ else:
 
     pdf_output = exportar_pdf()
     st.download_button("📥 Descargar Informe Completo (PDF)", pdf_output, "Reporte_CS.pdf", "application/pdf")
+
