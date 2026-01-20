@@ -29,7 +29,7 @@ if 'paso' not in st.session_state:
     st.session_state.update({'paso': 0, 'respuestas_usuario': [], 'finalizado': False})
 
 # --- INTERFAZ ---
-st.title("🛡️ Diagnóstico de Madurez CS")
+st.title("🛡️ Assessment Digital de Ciberseguridad")
 
 if not st.session_state.finalizado:
     fila = df_preguntas.iloc[st.session_state.paso]
@@ -120,5 +120,6 @@ else:
 
     pdf_output = exportar_pdf()
     st.download_button("📥 Descargar Informe Completo (PDF)", pdf_output, "Reporte_CS.pdf", "application/pdf")
+
 
 
