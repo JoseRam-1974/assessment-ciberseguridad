@@ -117,6 +117,23 @@ elif st.session_state.etapa == 'finalizado':
     elif respuestas_positivas > 5: nivel = "Intermedio"
 
     st.metric("Nivel de Madurez Detectado", nivel)
+
+# NUEVA SECCIÓN: Resumen de Calificación
+    st.subheader("📝 ¿Por qué esta calificación?")
+    
+    # Contamos tipos de respuestas para el argumento
+    con_control = respuestas_positivas
+    sin_control = len(st.session_state.respuestas_usuario) - respuestas_positivas
+    
+    if nivel == "Avanzado":
+        st.write(f"Su organización muestra una postura sólida con **{con_control} controles maduros** detectados. La calificación refleja el uso de tecnologías como MFA o EDR y procesos automatizados que reducen drásticamente la superficie de ataque.")
+    elif nivel == "Intermedio":
+        st.write(f"Se detectaron **{con_control} controles activos**, pero existen **{sin_control} áreas con gestión manual o inexistente**. Este nivel indica que, aunque hay conciencia de seguridad, la falta de integración técnica permite brechas que los atacantes podrían explotar.")
+    else:
+        st.write(f"La calificación **{nivel}** se debe a que la mayoría de los controles ({sin_control}) son manuales o no están implementados. Según la lógica de evaluación, su infraestructura actual depende de acciones humanas reactivas en lugar de protecciones proactivas.")
+
+    st.divider()
+    # ... (continúa con las recomendaciones)
     
     def exportar_pdf():
         pdf = FPDF()
@@ -137,3 +154,4 @@ elif st.session_state.etapa == 'finalizado':
 
     pdf_output = exportar_pdf()
     st.download_button("📥 Descargar Informe Completo (PDF)", pdf_output, "Reporte_CS.pdf", "application/pdf")
+
