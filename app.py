@@ -20,7 +20,6 @@ def leer_tablas_seguro(file_path, columnas_esperadas):
         st.error(f"Error al cargar {file_path}: {e}")
         return None
 
-
 # --- CARGA DE DATOS ---
 df_preguntas = leer_tablas_seguro("01. Preguntas.docx", ["Preguntas", "Alternativas"])
 df_respuestas = leer_tablas_seguro("02. Respuestas.docx", ["Alternativas", "Complemento", "Recomendaciones"])
@@ -120,6 +119,7 @@ else:
 
     pdf_output = exportar_pdf()
     st.download_button("📥 Descargar Informe Completo (PDF)", pdf_output, "Reporte_CS.pdf", "application/pdf")
+
 
 
 
