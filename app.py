@@ -40,27 +40,38 @@ elif st.session_state.etapa == 'preguntas':
 elif st.session_state.etapa == 'finalizado':
     st.success("✅ Assessment completado.")
     
-   # --- BLOQUE DE GUARDADO SEGURO ---
-if not st.session_state.datos_enviados:
-    try:
-        # Indicamos explícitamente la URL desde los secrets
-        conn = st.connection("gsheets", type=GSheetsConnection)
-        
-        # Recuperamos datos de forma segura
-        info = st.session_state.get('datos_contacto', {})
-        
-        nueva_fila = pd.DataFrame([{
-            "Fecha": datetime.datetime.now().strftime("%d/%m/%Y %H:%M"),
-            "Nombre": info.get("Nombre", "N/A"),
-            "Empresa": info.get("Empresa", "N/A"),
-            "Email": info.get("Email", "N/A"),
-            "Madurez": nivel # Asegúrate de que esta variable esté definida arriba
-        }])
-        
-        # IMPORTANTE: Cambia "Sheet1" por el nombre exacto de la pestaña de tu Excel (ej: "Hoja 1")
-        actualizado = conn.create(spreadsheet=st.secrets["connections"]["gsheets"]["spreadsheet"], data=nueva_fila)
-        
-        st.session_state.datos_enviados = True
-        st.toast("✅ Lead registrado en Google Sheets")
-    except Exception as e:
-        st.error(f"Error al conectar con Sheets: {e}")
+    if not st.session_state.datos_enviados:
+        try:
+            # 1. Establecer conexión
+            conn = st.connection("gsheets", type=GSheetsConnection)
+            
+            # 2. Preparar los datos de contacto de forma segura
+            info = st.session_state.get('datos_contacto', {})
+            
+            # 3. Crear el DataFrame con la nueva fila
+            nueva_fila = pd.DataFrame([{
+                "Fecha": datetime.datetime.now().strftime("%d/%m/%Y %H:%M"),
+                "Nombre": info.get("Nombre", "N/A"),
+                "Empresa": info.get("Empresa", "N/A"),
+                "Email": info.get("Email", "N/A"),
+                "Madurez": "Evaluado" # Puedes cambiarlo por tu variable de nivel
+            }])
+            
+            # 4. Leer datos actuales para concatenar
+            # Usamos el nombre de la hoja (Sheet1) o la URL de los secrets
+            df_actual = conn.read(spreadsheet=st.secrets["connections"]["gsheets"]["spreadsheet"])
+            
+            # 5. Concatenar y actualizar la hoja completa
+            df_final = pd.concat([df_actual, nueva_fila], ignore_index=True)
+            conn.update(spreadsheet=st.secrets["connections"]["gsheets"]["spreadsheet"], data=df_final)
+            
+            st.session_state.datos_enviados = True
+            st.balloons()
+            st.toast("🚀 Datos sincronizados con el Backoffice")
+            
+        except Exception as e:
+            st.error(f"Error al sincronizar: {e}")
+
+    if st.button("Realizar nuevo test"):
+        st.session_state.clear()
+        st.rerun()
