@@ -2,3 +2,4 @@ streamlit
 python-docx
 fpdf
 pandas
+st-gsheets-connection
