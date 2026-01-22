@@ -40,32 +40,27 @@ elif st.session_state.etapa == 'preguntas':
 elif st.session_state.etapa == 'finalizado':
     st.success("✅ Assessment completado.")
     
-    # BLOQUE DE GUARDADO SEGURO
-    if not st.session_state.datos_enviados:
-        try:
-            conn = st.connection("gsheets", type=GSheetsConnection)
-            
-            # Recuperamos datos de forma segura para evitar el KeyError
-            info = st.session_state.get('datos_contacto', {})
-            
-            nueva_fila = pd.DataFrame([{
-                "Fecha": datetime.datetime.now().strftime("%d/%m/%Y %H:%M"),
-                "Nombre": info.get("Nombre", "N/A"),
-                "Empresa": info.get("Empresa", "N/A"),
-                "Email": info.get("Email", "N/A"),
-                "Madurez": "Intermedio" # Ejemplo
-            }])
-            
-            # Leer actual y añadir nueva fila
-            actual = conn.read(worksheet="Sheet1")
-            actualizado = pd.concat([actual, nueva_fila], ignore_index=True)
-            conn.update(worksheet="Sheet1", data=actualizado)
-            
-            st.session_state.datos_enviados = True
-            st.toast("Datos guardados en Google Sheets")
-        except Exception as e:
-            st.error(f"Error al conectar con Sheets: {e}")
-
-    if st.button("Realizar nuevo test"):
-        st.session_state.clear()
-        st.rerun()
+   # --- BLOQUE DE GUARDADO SEGURO ---
+if not st.session_state.datos_enviados:
+    try:
+        # Indicamos explícitamente la URL desde los secrets
+        conn = st.connection("gsheets", type=GSheetsConnection)
+        
+        # Recuperamos datos de forma segura
+        info = st.session_state.get('datos_contacto', {})
+        
+        nueva_fila = pd.DataFrame([{
+            "Fecha": datetime.datetime.now().strftime("%d/%m/%Y %H:%M"),
+            "Nombre": info.get("Nombre", "N/A"),
+            "Empresa": info.get("Empresa", "N/A"),
+            "Email": info.get("Email", "N/A"),
+            "Madurez": nivel # Asegúrate de que esta variable esté definida arriba
+        }])
+        
+        # IMPORTANTE: Cambia "Sheet1" por el nombre exacto de la pestaña de tu Excel (ej: "Hoja 1")
+        actualizado = conn.create(spreadsheet=st.secrets["connections"]["gsheets"]["spreadsheet"], data=nueva_fila)
+        
+        st.session_state.datos_enviados = True
+        st.toast("✅ Lead registrado en Google Sheets")
+    except Exception as e:
+        st.error(f"Error al conectar con Sheets: {e}")
