@@ -4,122 +4,125 @@ from docx import Document
 import datetime
 from streamlit_gsheets import GSheetsConnection
 
-# 1. CONFIGURACIÓN DE PÁGINA
-st.set_page_config(page_title="Assessment Ciberseguridad", page_icon="🛡️", layout="wide")
+# --- 1. CONFIGURACIÓN ---
+st.set_page_config(page_title="Assessment Ciberseguridad", layout="wide")
 
-# Función para leer el Word de preguntas
-def leer_preguntas(file_path):
+def leer_preguntas_word(ruta):
     try:
-        doc = Document(file_path)
-        data = []
-        for table in doc.tables:
-            for row in table.rows:
-                data.append([cell.text.strip() for cell in row.cells[:2]])
-        return pd.DataFrame(data[1:], columns=["Preguntas", "Alternativas"])
-    except:
-        return None
+        doc = Document(ruta)
+        datos = []
+        for tabla in doc.tables:
+            for fila in tabla.rows:
+                # Capturamos Pregunta y Alternativas
+                datos.append([celda.text.strip() for celda in fila.cells[:2]])
+        return pd.DataFrame(datos[1:], columns=["Pregunta", "Opciones"])
+    except Exception as e:
+        st.error(f"Error cargando el archivo de preguntas: {e}")
+        return pd.DataFrame()
 
-# 2. INICIALIZACIÓN DE ESTADO
+# --- 2. ESTADO DE LA SESIÓN ---
 if 'etapa' not in st.session_state:
     st.session_state.update({
         'etapa': 'registro',
         'paso': 0,
-        'respuestas_usuario': [],
-        'datos_contacto': {},
-        'datos_enviados': False
+        'respuestas': [],
+        'datos_usuario': {},
+        'enviado': False
     })
 
-# 3. ETAPA 1: REGISTRO COMPLETO
+st.title("🛡️ Assessment Digital de Ciberseguridad")
+
+# --- ETAPA 1: REGISTRO COMPLETO ---
 if st.session_state.etapa == 'registro':
-    st.title("🛡️ Registro de Evaluación")
-    st.info("Por favor, complete sus datos corporativos.")
-    with st.form("registro_form"):
-        col1, col2 = st.columns(2)
-        with col1:
+    st.subheader("Información de Contacto")
+    with st.form("form_registro"):
+        c1, c2 = st.columns(2)
+        with c1:
             nombre = st.text_input("Nombre Completo*")
             cargo = st.text_input("Cargo*")
             empresa = st.text_input("Empresa*")
-        with col2:
+        with c2:
             email = st.text_input("Email Corporativo*")
             telefono = st.text_input("Teléfono / WhatsApp*")
         
-        if st.form_submit_button("Comenzar Diagnóstico"):
+        if st.form_submit_button("Siguiente"):
             if nombre and cargo and empresa and email and telefono:
-                st.session_state.datos_contacto = {
+                st.session_state.datos_usuario = {
                     "Nombre": nombre, "Cargo": cargo, "Empresa": empresa, 
-                    "Email": email, "Tel": telefono
+                    "Email": email, "Telefono": telefono
                 }
                 st.session_state.etapa = 'preguntas'
                 st.rerun()
             else:
-                st.error("Todos los campos marcados con * son obligatorios.")
+                st.warning("Por favor, complete todos los campos obligatorios (*).")
 
-# 4. ETAPA 2: PREGUNTAS DESDE EL WORD
+# --- ETAPA 2: CUESTIONARIO DINÁMICO ---
 elif st.session_state.etapa == 'preguntas':
-    st.title("📝 Cuestionario de Madurez")
-    df_p = leer_preguntas("01. Preguntas.docx")
+    df_preguntas = leer_preguntas_word("01. Preguntas.docx")
     
-    if df_p is not None and not df_p.empty:
-        total_preguntas = len(df_p)
-        fila = df_p.iloc[st.session_state.paso]
+    if not df_preguntas.empty:
+        total = len(df_preguntas)
+        pregunta_actual = df_preguntas.iloc[st.session_state.paso]
         
-        st.subheader(f"Pregunta {st.session_state.paso + 1} de {total_preguntas}")
-        st.write(f"### {fila['Preguntas']}")
+        st.write(f"**Pregunta {st.session_state.paso + 1} de {total}**")
+        st.markdown(f"### {pregunta_actual['Pregunta']}")
         
-        opciones = [o.strip() for o in fila['Alternativas'].split('\n') if o.strip()]
-        res = st.radio("Seleccione una respuesta:", opciones, index=None)
+        opciones = [opt.strip() for opt in pregunta_actual['Opciones'].split('\n') if opt.strip()]
+        seleccion = st.radio("Seleccione una opción:", opciones, index=None)
 
-        if st.button("Siguiente Pregunta"):
-            if res:
-                st.session_state.respuestas_usuario.append(res)
-                if st.session_state.paso < total_preguntas - 1:
+        if st.button("Continuar"):
+            if seleccion:
+                st.session_state.respuestas.append(seleccion)
+                if st.session_state.paso < total - 1:
                     st.session_state.paso += 1
                     st.rerun()
                 else:
-                    st.session_state.etapa = 'finalizado'
+                    st.session_state.etapa = 'resultado'
                     st.rerun()
             else:
-                st.warning("Por favor, seleccione una opción.")
+                st.warning("Debe seleccionar una respuesta para continuar.")
     else:
-        st.error("No se pudo cargar el archivo '01. Preguntas.docx'. Verifique que el archivo esté en la carpeta del proyecto.")
+        st.error("No se encontraron preguntas en el archivo '01. Preguntas.docx'.")
 
-# 5. ETAPA 3: RESULTADOS Y GUARDADO
-elif st.session_state.etapa == 'finalizado':
-    st.title("✅ Evaluación Finalizada")
+# --- ETAPA 3: RESULTADOS Y GOOGLE SHEETS ---
+elif st.session_state.etapa == 'resultado':
+    st.success("✅ Evaluación finalizada correctamente.")
     
-    # Cálculo simple de madurez para el ejemplo
-    positivas = sum(1 for r in st.session_state.respuestas_usuario if "SÍ" in r.upper() or "SI" in r.upper())
-    nivel = "Avanzado" if positivas > 10 else "Intermedio" if positivas > 5 else "Inicial"
+    # Lógica de madurez (ejemplo basado en respuestas "SI")
+    si_count = sum(1 for r in st.session_state.respuestas if "SI" in r.upper())
+    nivel = "Avanzado" if si_count > 10 else "Intermedio" if si_count > 5 else "Inicial"
     
-    st.metric("Su Nivel de Madurez es:", nivel)
+    st.metric("Nivel de Madurez Detectado", nivel)
 
-    if not st.session_state.datos_enviados:
+    if not st.session_state.enviado:
         try:
             conn = st.connection("gsheets", type=GSheetsConnection)
-            info = st.session_state.datos_contacto
+            usuario = st.session_state.datos_usuario
             
-            # Preparamos la fila para Google Sheets
-            nueva_fila = pd.DataFrame([{
+            # Formatear datos para el envío
+            datos_finales = pd.DataFrame([{
                 "Fecha": datetime.datetime.now().strftime("%d/%m/%Y %H:%M"),
-                "Nombre": info.get("Nombre"),
-                "Cargo": info.get("Cargo"),
-                "Empresa": info.get("Empresa"),
-                "Email": info.get("Email"),
-                "Telefono": info.get("Tel"),
+                "Nombre": usuario["Nombre"],
+                "Cargo": usuario["Cargo"],
+                "Empresa": usuario["Empresa"],
+                "Email": usuario["Email"],
+                "Telefono": usuario["Telefono"],
                 "Resultado": nivel
             }])
             
-            # LEER Y ACTUALIZAR (Ajuste para evitar el error de "Sheet1 not found")
-            # Esto leerá la primera pestaña disponible sin importar el nombre
-            df_actual = conn.read(spreadsheet=st.secrets["connections"]["gsheets"]["spreadsheet"])
-            df_final = pd.concat([df_actual, nueva_fila], ignore_index=True)
-            conn.update(spreadsheet=st.secrets["connections"]["gsheets"]["spreadsheet"], data=df_final)
+            # Leer datos previos y añadir nuevo
+            # Usamos la URL de tus secrets directamente
+            url = st.secrets["connections"]["gsheets"]["spreadsheet"]
+            df_previo = conn.read(spreadsheet=url, worksheet="Sheet1")
+            df_actualizado = pd.concat([df_previo, datos_finales], ignore_index=True)
             
-            st.session_state.datos_enviados = True
+            conn.update(spreadsheet=url, worksheet="Sheet1", data=df_actualizado)
+            
+            st.session_state.enviado = True
             st.balloons()
-            st.success("Sus resultados han sido enviados al equipo de consultoría.")
+            st.toast("Resultados sincronizados con Google Sheets")
         except Exception as e:
-            st.error(f"Error de conexión: {e}")
+            st.error(f"Error al guardar en la nube: {e}")
 
     if st.button("Reiniciar Test"):
         st.session_state.clear()
