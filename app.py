@@ -159,31 +159,41 @@ from streamlit_gsheets import GSheetsConnection
 import datetime
 
 # --- CONEXIÓN A GOOGLE SHEETS ---
-conn = st.connection("gsheets", type=GSheetsConnection)
+try:
+    conn = st.connection("gsheets", type=GSheetsConnection)
 
-# Preparar la fila de datos
-nueva_fila = pd.DataFrame([{
-    "Fecha": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
-    "Nombre": st.session_state.datos_contacto['Nombre'],
-    "Cargo": st.session_state.datos_contacto['Cargo'],
-    "Empresa": st.session_state.datos_contacto['Empresa'],
-    "Email": st.session_state.datos_contacto['Email'],
-    "Tel": st.session_state.datos_contacto['Tel'],
-    "Madurez": nivel,
-    "Presupuesto": st.session_state.respuestas_usuario[-1] # Asumiendo que la P.16 es la última
-}])
+    # Validamos que existan datos de contacto para evitar el KeyError
+    if st.session_state.etapa == 'finalizado' and 'datos_contacto' in st.session_state and st.session_state.datos_contacto:
+        
+        # Preparamos la fila solo si no se ha enviado antes
+        if 'datos_enviados' not in st.session_state:
+            nueva_fila = pd.DataFrame([{
+                "Fecha": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
+                "Nombre": st.session_state.datos_contacto.get('Nombre', 'N/A'),
+                "Cargo": st.session_state.datos_contacto.get('Cargo', 'N/A'),
+                "Empresa": st.session_state.datos_contacto.get('Empresa', 'N/A'),
+                "Email": st.session_state.datos_contacto.get('Email', 'N/A'),
+                "Tel": st.session_state.datos_contacto.get('Tel', 'N/A'),
+                "Madurez": nivel,
+                # Tomamos la última respuesta (Presupuesto) de forma segura
+                "Presupuesto": str(st.session_state.respuestas_usuario[-1]) if st.session_state.respuestas_usuario else "N/A"
+            }])
 
-# Enviar datos (Solo una vez al finalizar)
-if 'datos_enviados' not in st.session_state:
-    try:
-        # Leer datos actuales
-        existente = conn.read(worksheet="Sheet1", usecols=list(range(8)))
-        # Concatenar y actualizar
-        actualizado = pd.concat([existente, nueva_fila], ignore_index=True)
-        conn.update(worksheet="Sheet1", data=actualizado)
-        st.session_state.datos_enviados = True
-        st.toast("Datos registrados en el Backoffice")
-    except Exception as e:
-        st.error(f"Error al registrar en Backoffice: {e}")
+            # Ejecutamos la actualización
+            try:
+                # Leer hoja existente (asegúrate que el nombre coincida: "Sheet1" es el predeterminado)
+                existente = conn.read(worksheet="Sheet1")
+                actualizado = pd.concat([existente, nueva_fila], ignore_index=True)
+                conn.update(worksheet="Sheet1", data=actualizado)
+                
+                st.session_state.datos_enviados = True
+                st.toast("🚀 Datos registrados exitosamente en el Backoffice.")
+            except Exception as e:
+                st.error(f"Error al escribir en la hoja: {e}")
+    else:
+        # Si llega aquí por error, mostramos un aviso amigable
+        if st.session_state.etapa == 'finalizado':
+            st.warning("⚠️ No se encontraron datos de contacto para registrar.")
 
-
+except Exception as e:
+    st.error(f"Error de conexión con Google Sheets: {e}")
