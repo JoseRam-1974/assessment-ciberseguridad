@@ -155,3 +155,35 @@ elif st.session_state.etapa == 'finalizado':
     pdf_output = exportar_pdf()
     st.download_button("📥 Descargar Informe Completo (PDF)", pdf_output, "Reporte_CS.pdf", "application/pdf")
 
+from streamlit_gsheets import GSheetsConnection
+import datetime
+
+# --- CONEXIÓN A GOOGLE SHEETS ---
+conn = st.connection("gsheets", type=GSheetsConnection)
+
+# Preparar la fila de datos
+nueva_fila = pd.DataFrame([{
+    "Fecha": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
+    "Nombre": st.session_state.datos_contacto['Nombre'],
+    "Cargo": st.session_state.datos_contacto['Cargo'],
+    "Empresa": st.session_state.datos_contacto['Empresa'],
+    "Email": st.session_state.datos_contacto['Email'],
+    "Tel": st.session_state.datos_contacto['Tel'],
+    "Madurez": nivel,
+    "Presupuesto": st.session_state.respuestas_usuario[-1] # Asumiendo que la P.16 es la última
+}])
+
+# Enviar datos (Solo una vez al finalizar)
+if 'datos_enviados' not in st.session_state:
+    try:
+        # Leer datos actuales
+        existente = conn.read(worksheet="Sheet1", usecols=list(range(8)))
+        # Concatenar y actualizar
+        actualizado = pd.concat([existente, nueva_fila], ignore_index=True)
+        conn.update(worksheet="Sheet1", data=actualizado)
+        st.session_state.datos_enviados = True
+        st.toast("Datos registrados en el Backoffice")
+    except Exception as e:
+        st.error(f"Error al registrar en Backoffice: {e}")
+
+
