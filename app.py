@@ -88,11 +88,12 @@ elif st.session_state.etapa == 'preguntas':
 elif st.session_state.etapa == 'resultado':
     st.success("✅ Evaluación finalizada correctamente.")
     
-    # 1. Cálculos base
+    # 1. Cálculos de Madurez y Presupuesto
     si_count = sum(1 for r in st.session_state.respuestas if "SI" in str(r).upper())
     nivel = "Avanzado" if si_count > 12 else "Intermedio" if si_count > 6 else "Inicial"
     
     try:
+        # Buscamos la respuesta de presupuesto (ajusta el índice si es necesario)
         dato_presupuesto = st.session_state.respuestas[15]
     except:
         dato_presupuesto = "No especificado"
@@ -107,48 +108,58 @@ elif st.session_state.etapa == 'resultado':
         ["SÍ", "NO"],
         index=1,
         horizontal=True,
-        key="radio_contacto"
+        key="radio_final"
     )
 
-    # 3. Botón de Registro
+    # 3. Botón de Registro con Limpieza de Columnas
     if not st.session_state.enviado:
-        if st.button("Finalizar y Registrar Resultados", key="btn_guardar"):
+        if st.button("Finalizar y Registrar Resultados"):
             try:
-                # Conexión
                 conn = st.connection("gsheets", type=GSheetsConnection)
                 url_hoja = st.secrets["connections"]["gsheets"]["spreadsheet"]
                 user = st.session_state.datos_usuario
                 
-                # Preparamos la nueva fila como una lista simple (formato para append)
-                nueva_fila_lista = [
-                    datetime.datetime.now().strftime("%d/%m/%Y %H:%M"),
-                    user.get("Nombre", "N/A"),
-                    user.get("Cargo", "N/A"),
-                    user.get("Empresa", "N/A"),
-                    user.get("Email", "N/A"),
-                    user.get("Telefono", "N/A"),
-                    nivel,
-                    str(dato_presupuesto),
-                    quiere_contacto
+                # Definimos exactamente nuestras 9 columnas
+                columnas_correctas = [
+                    "Fecha", "Nombre", "Cargo", "Empresa", "Email", 
+                    "Telefono", "Resultado", "Presupuesto", "Contacto_Ejecutivo"
                 ]
+                
+                # Preparamos el nuevo registro
+                nuevo_registro = pd.DataFrame([{
+                    "Fecha": datetime.datetime.now().strftime("%d/%m/%Y %H:%M"),
+                    "Nombre": user.get("Nombre", "N/A"),
+                    "Cargo": user.get("Cargo", "N/A"),
+                    "Empresa": user.get("Empresa", "N/A"),
+                    "Email": user.get("Email", "N/A"),
+                    "Telefono": user.get("Telefono", "N/A"),
+                    "Resultado": nivel,
+                    "Presupuesto": str(dato_presupuesto),
+                    "Contacto_Ejecutivo": quiere_contacto
+                }])
 
-                # --- NUEVA ESTRATEGIA DE GUARDADO ---
-                # 1. Intentamos leer lo que hay (sin caché)
-                df_historico = conn.read(spreadsheet=url_hoja, ttl=0) # ttl=0 evita que lea datos viejos
-                
-                # 2. Convertimos el nuevo registro en DataFrame
-                df_nuevo = pd.DataFrame([nueva_fila_lista], columns=df_historico.columns if not df_historico.empty else ["Fecha", "Nombre", "Cargo", "Empresa", "Email", "Telefono", "Resultado", "Presupuesto", "Contacto_Ejecutivo"])
-                
-                # 3. Concatenamos asegurando que no haya filas vacías en el medio
-                df_final = pd.concat([df_historico.dropna(how='all'), df_nuevo], ignore_index=True)
-                
-                # 4. ACTUALIZAMOS EL RANGO COMPLETO
+                # Intentamos leer el histórico
+                try:
+                    # ttl=0 para evitar datos viejos en caché
+                    df_historico = conn.read(spreadsheet=url_hoja, ttl=0)
+                    
+                    # FORZAMOS que el histórico tenga las mismas columnas que el nuevo
+                    # Si faltan columnas las crea, si sobran las quita
+                    df_historico = df_historico.reindex(columns=columnas_correctas)
+                    
+                    # Unimos quitando filas que sean todas vacías
+                    df_final = pd.concat([df_historico.dropna(how='all'), nuevo_registro], ignore_index=True)
+                except:
+                    # Si la hoja está corrupta o vacía, empezamos solo con el nuevo
+                    df_final = nuevo_registro
+
+                # 4. ACTUALIZAMOS LA HOJA
                 conn.update(spreadsheet=url_hoja, data=df_final)
                 
                 st.session_state.enviado = True
                 st.balloons()
-                st.success("¡Registro añadido exitosamente!")
-                st.rerun() # Forzamos recarga para bloquear el botón
+                st.success("¡Registro añadido exitosamente al historial!")
+                st.rerun()
                 
             except Exception as e:
                 st.error(f"Error crítico al guardar: {e}")
