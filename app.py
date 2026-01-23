@@ -4,6 +4,60 @@ from docx import Document
 import datetime
 from streamlit_gsheets import GSheetsConnection
 
+from fpdf import FPDF
+
+class PDF(FPDF):
+    def header(self):
+        self.set_font('Arial', 'B', 15)
+        self.cell(0, 10, 'Informe de Assessment Ciberseguridad', 0, 1, 'C')
+        self.ln(10)
+
+    def footer(self):
+        self.set_y(-15)
+        self.set_font('Arial', 'I', 8)
+        self.cell(0, 10, f'Página {self.page_no()}', 0, 0, 'C')
+
+def generar_pdf(datos_usuario, nivel, presupuesto, respuestas):
+    pdf = PDF()
+    pdf.add_page()
+    pdf.set_font("Arial", size=12)
+
+    # Sección Datos del Cliente
+    pdf.set_fill_color(230, 230, 230)
+    pdf.cell(0, 10, "1. Información General", 1, 1, 'L', True)
+    pdf.ln(5)
+    for k, v in datos_usuario.items():
+        pdf.cell(50, 10, f"{k}:", 0, 0)
+        pdf.cell(0, 10, f"{v}", 0, 1)
+    
+    pdf.ln(10)
+
+    # Sección Resultados
+    pdf.set_fill_color(200, 220, 255)
+    pdf.cell(0, 10, "2. Resultados del Diagnóstico", 1, 1, 'L', True)
+    pdf.ln(5)
+    pdf.set_font("Arial", 'B', 12)
+    pdf.cell(0, 10, f"Nivel de Madurez: {nivel}", 0, 1)
+    pdf.set_font("Arial", size=12)
+    pdf.cell(0, 10, f"Situación Presupuestaria: {presupuesto}", 0, 1)
+    
+    pdf.ln(10)
+
+    # Sección Detalle (Solo las primeras para no extender demasiado)
+    pdf.set_fill_color(230, 230, 230)
+    pdf.cell(0, 10, "3. Resumen de Respuestas", 1, 1, 'L', True)
+    pdf.ln(5)
+    pdf.set_font("Arial", size=10)
+    
+    for i, res in enumerate(respuestas):
+        # Evitamos que el texto se salga de la página
+        texto = f"P{i+1}: {res}"
+        pdf.multi_cell(0, 8, texto, 0, 'L')
+        if pdf.get_y() > 260: # Salto de página automático
+            pdf.add_page()
+
+    return pdf.output(dest='S')
+
 # --- 1. CONFIGURACIÓN ---
 st.set_page_config(page_title="Assessment Ciberseguridad", layout="wide")
 
@@ -180,7 +234,27 @@ elif st.session_state.etapa == 'resultado':
     else:
         st.info("Sus datos ya han sido registrados. ¡Gracias!")
 
+# --- DENTRO DE LA ETAPA 3 (resultado) ---
+st.divider()
+st.subheader("📥 Descargar Reporte")
+
+# Generamos el archivo en memoria
+pdf_bytes = generar_pdf(
+    st.session_state.datos_usuario, 
+    nivel, 
+    dato_presupuesto, 
+    st.session_state.respuestas
+)
+
+st.download_button(
+    label="Descargar Informe PDF",
+    data=pdf_bytes,
+    file_name=f"Assessment_{st.session_state.datos_usuario.get('Empresa', 'Ciberseguridad')}.pdf",
+    mime="application/pdf"
+)
+    
     if st.button("Reiniciar Test"):
         st.session_state.clear()
         st.rerun()
+
 
