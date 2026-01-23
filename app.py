@@ -60,7 +60,6 @@ elif st.session_state.etapa == 'preguntas':
         st.write(f"### {fila['Clave']}")
         opts = [o.strip() for o in fila['Contenido'].split('\n') if o.strip()]
         
-        # Detección sugerida por palabra "Múltiple"
         es_m = "múltiple" in fila['Clave'].lower() or "multiple" in fila['Clave'].lower()
         ans = st.multiselect("Seleccione:", opts) if es_m else st.radio("Opcion:", opts, index=None)
 
@@ -74,7 +73,7 @@ elif st.session_state.etapa == 'preguntas':
                     st.session_state.etapa = 'resultado'
                     st.rerun()
 
-# --- ETAPA 3: RESULTADOS Y RECOMENDACIONES ---
+# --- ETAPA 3: RESULTADOS ---
 elif st.session_state.etapa == 'resultado':
     st.title("✅ Análisis Finalizado")
     si_c = sum(1 for r in st.session_state.respuestas if "SI" in str(r).upper())
@@ -89,8 +88,6 @@ elif st.session_state.etapa == 'resultado':
                 conn = st.connection("gsheets", type=GSheetsConnection)
                 url = st.secrets["connections"]["gsheets"]["spreadsheet"]
                 u = st.session_state.datos_usuario
-                
-                # Sincronización de columnas para evitar el error de "10 vs 9"
                 cols = ["Fecha","Nombre","Cargo","Empresa","Email","Telefono","Resultado","Presupuesto","Contacto"]
                 nuevo = pd.DataFrame([{
                     "Fecha": datetime.datetime.now().strftime("%d/%m/%Y %H:%M"),
@@ -108,13 +105,15 @@ elif st.session_state.etapa == 'resultado':
             except Exception as e:
                 st.error(f"Error de conexión: {e}")
     else:
-        st.success("Resultados registrados. Descargue su Plan de Acción:")
+        st.success("Resultados registrados. Generando reporte...")
         
-        # --- GENERACIÓN DE PDF BASADO EN RECOMENDACIONES (02. RESPUESTAS) ---
+        # CARGAR RECOMENDACIONES
         df_rec = leer_word("02. Respuestas.docx")
+        
         pdf = PDF()
         pdf.add_page()
         
+        # Sección 1
         pdf.set_font("Arial", 'B', 12)
         pdf.cell(0, 10, "1. SITUACION ACTUAL", 1, 1, 'L')
         pdf.set_font("Arial", '', 10)
@@ -123,21 +122,32 @@ elif st.session_state.etapa == 'resultado':
         pdf.cell(0, 7, clean_t(f"Empresa: {u['Empresa']} | Nivel detectado: {nivel}"), 0, 1)
         pdf.ln(5)
 
+        # Sección 2
         pdf.set_font("Arial", 'B', 12)
         pdf.cell(0, 10, "2. PLAN DE ACCION Y RECOMENDACIONES", 1, 1, 'L')
         pdf.ln(4)
 
+        encontrados = 0
         for r_u in st.session_state.respuestas:
             indiv = [s.strip() for s in r_u.split(",")]
             for s in indiv:
-                # regex=False evita el error de "unbalanced parenthesis"
-                match = df_rec[df_rec['Clave'].str.contains(s, na=False, case=False, regex=False)]
+                # BÚSQUEDA FLEXIBLE: Quitamos espacios y pasamos a minúsculas para comparar
+                s_clean = s.strip().lower()
+                # Buscamos en el dataframe de recomendaciones
+                match = df_rec[df_rec['Clave'].str.strip().str.lower() == s_clean]
+                
                 if not match.empty:
+                    encontrados += 1
                     pdf.set_font("Arial", 'B', 9)
                     pdf.multi_cell(0, 6, clean_t(f"Punto detectado: {s}"))
                     pdf.set_font("Arial", '', 9)
                     pdf.multi_cell(0, 6, clean_t(f"RECOMENDACION: {match.iloc[0]['Contenido']}"))
                     pdf.ln(3)
+        
+        # Si no encontró nada, ponemos un aviso para que no salga en blanco
+        if encontrados == 0:
+            pdf.set_font("Arial", 'I', 10)
+            pdf.multi_cell(0, 10, "No se encontraron recomendaciones especificas para las respuestas seleccionadas. Por favor, verifique que los textos en '01. Preguntas' y '02. Respuestas' coincidan exactamente.")
 
         st.download_button(
             label="📥 Descargar Reporte de Recomendaciones",
