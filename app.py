@@ -27,13 +27,13 @@ def normalizar(txt):
     t = str(txt).lower()
     rep = {"á":"a","é":"e","í":"i","ó":"o","ú":"u","ñ":"n"}
     for a, b in rep.items(): t = t.replace(a, b)
-    # No eliminamos espacios para mantener montos como "USD 100000"
-    t = re.sub(r'[^a-z0-9 ]', '', t)
-    return t.strip()
+    # Limpieza para búsqueda flexible
+    t = re.sub(r'[^a-z0-9]', '', t)
+    return t
 
 def clean_pdf(txt):
     if not txt: return ""
-    rep = {"á":"a","é":"e","í":"i","ó":"o","ú":"u","ñ":"n","Á":"A","É":"E","Í":"I","Ó":"O","Ú":"U","Ñ":"N"}
+    rep = {"á":"a","é":"e","í":"i","ó":"o","ú":"u","ñ":"n","Á":"A","É":"E","Í":"I","Ó":"O","Ú":"U","Ñ":"N","¿":"","¡":""}
     t = str(txt)
     for a, b in rep.items(): t = t.replace(a, b)
     return t.encode('latin-1', 'ignore').decode('latin-1')
@@ -64,7 +64,7 @@ if st.session_state.etapa == 'registro':
             nom, car, emp = st.text_input("Nombre*"), st.text_input("Cargo*"), st.text_input("Empresa*")
         with c2:
             ema, tel = st.text_input("Email*"), st.text_input("Telefono*")
-        if st.form_submit_button("Siguiente"):
+        if st.form_submit_button("Iniciar Assessment"):
             if all([nom, car, emp, ema, tel]):
                 st.session_state.datos_usuario = {"Nombre":nom,"Cargo":car,"Empresa":emp,"Email":ema,"Telefono":tel}
                 st.session_state.etapa = 'preguntas'
@@ -74,9 +74,8 @@ if st.session_state.etapa == 'registro':
 elif st.session_state.etapa == 'preguntas':
     df_p = leer_word("01. Preguntas.docx")
     if not df_p.empty:
-        total_p = len(df_p)
         fila = df_p.iloc[st.session_state.paso]
-        st.subheader(f"Pregunta {st.session_state.paso + 1} de {total_p}")
+        st.subheader(f"Pregunta {st.session_state.paso + 1} de {len(df_p)}")
         st.write(f"### {fila['Clave']}")
         opts = [o.strip() for o in fila['Contenido'].split('\n') if o.strip()]
         es_m = "múltiple" in fila['Clave'].lower() or "multiple" in fila['Clave'].lower()
@@ -86,41 +85,40 @@ elif st.session_state.etapa == 'preguntas':
             if ans:
                 st.session_state.preguntas_texto.append(fila['Clave'])
                 st.session_state.respuestas_texto.append(", ".join(ans) if isinstance(ans, list) else ans)
-                if st.session_state.paso < total_p - 1:
+                if st.session_state.paso < len(df_p) - 1:
                     st.session_state.paso += 1
                     st.rerun()
                 else:
                     st.session_state.etapa = 'resultado'
                     st.rerun()
 
-# --- ETAPA 3: RESULTADOS ---
+# --- ETAPA 3: RESULTADOS Y GUARDADO ---
 elif st.session_state.etapa == 'resultado':
     st.title("✅ Análisis Finalizado")
     
-    # Detección de Presupuesto para GSheets
-    presupuesto_val = "No especificado"
+    # Extraer presupuesto para GSheets
+    pres_val = "N/A"
     for p, r in zip(st.session_state.preguntas_texto, st.session_state.respuestas_texto):
         if "presupuesto" in p.lower() or "inversion" in p.lower():
-            presupuesto_val = r
-            break
+            pres_val = r
 
     si_c = sum(1 for r in st.session_state.respuestas_texto if "SI" in str(r).upper())
     nivel = "Avanzado" if si_c > 12 else "Intermedio" if si_c > 6 else "Inicial"
-    st.metric("Nivel de Madurez", nivel)
+    st.metric("Nivel detectado", nivel)
 
     contacto = st.radio("¿Quieres contactar a un ejecutivo?", ["SÍ", "NO"], index=0)
 
     if not st.session_state.enviado:
-        if st.button("Finalizar y Registrar"):
+        if st.button("Finalizar y Guardar"):
             try:
                 conn = st.connection("gsheets", type=GSheetsConnection)
                 url = st.secrets["connections"]["gsheets"]["spreadsheet"]
                 u = st.session_state.datos_usuario
                 df_nuevo = pd.DataFrame([{
-                    "Fecha": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
+                    "Fecha": datetime.datetime.now().strftime("%d/%m/%Y %H:%M"),
                     "Nombre":u["Nombre"], "Cargo":u["Cargo"], "Empresa":u["Empresa"],
                     "Email":u["Email"], "Telefono":u["Telefono"], "Resultado":nivel,
-                    "Presupuesto":presupuesto_val, "Contacto":contacto, "Estado":"Completado"
+                    "Presupuesto":pres_val, "Contacto":contacto, "Estado":"V6-Final"
                 }])
                 hist = conn.read(spreadsheet=url, ttl=0)
                 conn.update(spreadsheet=url, data=pd.concat([hist, df_nuevo], ignore_index=True))
@@ -129,63 +127,65 @@ elif st.session_state.etapa == 'resultado':
             except Exception as e:
                 st.error(f"Error: {e}")
     else:
-        st.success("¡Datos guardados!")
+        st.success("Resultados registrados.")
         
         # --- GENERACIÓN DE PDF ---
         df_rec = leer_word("02. Respuestas.docx")
         pdf = PDF()
         pdf.add_page()
         
-        # Resumen
+        # Resumen Ejecutivo
         pdf.set_font("Arial", 'B', 12)
         pdf.cell(0, 10, "1. RESUMEN EJECUTIVO", 1, 1, 'L')
         pdf.set_font("Arial", '', 10)
         u = st.session_state.datos_usuario
         pdf.ln(2)
-        pdf.cell(0, 7, clean_pdf(f"Empresa: {u['Empresa']} | Nivel: {nivel}"), 0, 1)
-        pdf.cell(0, 7, clean_pdf(f"Presupuesto declarado: {presupuesto_val}"), 0, 1)
+        pdf.cell(0, 7, clean_pdf(f"Empresa: {u['Empresa']} | Nivel de Madurez: {nivel}"), 0, 1)
         pdf.ln(5)
 
-        # Detalle
+        # Análisis Detallado
         pdf.set_font("Arial", 'B', 12)
-        pdf.cell(0, 10, "2. DETALLE DE RESPUESTAS Y RECOMENDACIONES", 1, 1, 'L')
+        pdf.cell(0, 10, "2. ANALISIS DE RESPUESTAS Y RECOMENDACIONES", 1, 1, 'L')
         pdf.ln(4)
 
         for i in range(len(st.session_state.preguntas_texto)):
             preg = st.session_state.preguntas_texto[i]
             resp = st.session_state.respuestas_texto[i]
             
-            # Encabezado de Pregunta
+            # 1. Mostrar Pregunta
             pdf.set_font("Arial", 'B', 9)
-            pdf.set_text_color(100, 100, 100)
-            pdf.multi_cell(0, 5, clean_pdf(f"P{i+1}: {preg}"))
+            pdf.set_text_color(80, 80, 80)
+            pdf.multi_cell(0, 5, clean_pdf(f"Pregunta {i+1}: {preg}"))
             
-            # Respuesta del Usuario (Hallazgo)
+            # 2. Mostrar Respuesta (Hallazgo) - Aquí aparecerá "USD 100000" completo
             pdf.set_font("Arial", 'I', 9)
             pdf.set_text_color(0, 0, 0)
-            pdf.multi_cell(0, 5, clean_pdf(f"Respuesta: {resp}"))
+            pdf.multi_cell(0, 5, clean_pdf(f"Hallazgo: {resp}"))
             
-            # Buscar Recomendación
-            match_encontrado = False
-            partes = [p.strip() for p in resp.split(",")]
-            for p in partes:
-                p_norm = normalizar(p)
-                if not p_norm: continue
-                
+            # 3. Buscar y Mostrar Recomendación Técnica
+            recom_encontrada = ""
+            resp_norm = normalizar(resp)
+            
+            if resp_norm:
                 for _, row in df_rec.iterrows():
-                    if p_norm == normalizar(row['Clave']):
-                        pdf.set_font("Arial", '', 9)
-                        pdf.multi_cell(0, 5, clean_pdf(f"-> RECOMENDACION: {row['Contenido']}"))
-                        match_encontrado = True
+                    # Comprobamos si la clave del Word está dentro de la respuesta o viceversa
+                    if normalizar(row['Clave']) in resp_norm or resp_norm in normalizar(row['Clave']):
+                        recom_encontrada = row['Contenido']
                         break
             
-            if not match_encontrado and "presupuesto" not in preg.lower():
+            if recom_encontrada:
+                pdf.set_font("Arial", '', 9)
+                pdf.set_text_color(0, 51, 102) # Azul oscuro para recomendación
+                pdf.multi_cell(0, 5, clean_pdf(f"RECOMENDACION TECNICA: {recom_encontrada}"))
+            else:
                 pdf.set_font("Arial", '', 8)
-                pdf.cell(0, 5, clean_pdf("   (Sin recomendacion tecnica asociada)"), 0, 1)
-            
-            pdf.ln(3)
+                pdf.set_text_color(150, 150, 150)
+                pdf.cell(0, 5, clean_pdf("   (Dato informativo para analisis ejecutivo)"), 0, 1)
 
-        st.download_button("📥 DESCARGAR INFORME", pdf.output(dest='S').encode('latin-1', 'replace'), f"Reporte_{u['Empresa']}.pdf", "application/pdf")
+            pdf.set_text_color(0, 0, 0)
+            pdf.ln(4)
+
+        st.download_button("📥 DESCARGAR REPORTE FINAL PDF", pdf.output(dest='S').encode('latin-1', 'replace'), f"Reporte_{u['Empresa']}.pdf", "application/pdf")
 
     if st.button("Reiniciar"):
         st.session_state.clear()
