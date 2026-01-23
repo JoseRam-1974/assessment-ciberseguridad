@@ -88,67 +88,71 @@ elif st.session_state.etapa == 'preguntas':
 elif st.session_state.etapa == 'resultado':
     st.success("✅ Evaluación finalizada correctamente.")
     
-    # 1. Lógica de madurez y presupuesto
+    # 1. Cálculos de Madurez y Presupuesto
     si_count = sum(1 for r in st.session_state.respuestas if "SI" in str(r).upper())
     nivel = "Avanzado" if si_count > 12 else "Intermedio" if si_count > 6 else "Inicial"
     
     try:
         dato_presupuesto = st.session_state.respuestas[15]
     except:
-        dato_presupuesto = "No respondido"
+        dato_presupuesto = "No especificado"
 
     st.metric("Nivel de Madurez Detectado", nivel)
     st.divider()
 
-    # 2. NUEVA CASILLA DE CONTACTO
+    # 2. Casilla de Contacto
     st.subheader("¿Deseas profundizar en tus resultados?")
     quiere_contacto = st.radio(
         "¿Quieres contactar a uno de nuestros ejecutivos para recibir una asesoría personalizada?",
         ["SÍ", "NO"],
-        index=1, # Por defecto en "NO"
+        index=1,
         horizontal=True
     )
 
-    # 3. BOTÓN PARA PROCESAR ENVÍO
+    # 3. Botón de Registro con "Append" Real
     if not st.session_state.enviado:
         if st.button("Finalizar y Registrar Resultados"):
             try:
                 conn = st.connection("gsheets", type=GSheetsConnection)
-                usuario = st.session_state.datos_usuario
                 url_hoja = st.secrets["connections"]["gsheets"]["spreadsheet"]
+                user = st.session_state.datos_usuario
                 
-                # Crear el registro con TODA la información
-                nuevo_registro = pd.DataFrame([{
+                # Fila individual
+                nueva_fila = pd.DataFrame([{
                     "Fecha": datetime.datetime.now().strftime("%d/%m/%Y %H:%M"),
-                    "Nombre": usuario.get("Nombre", "N/A"),
-                    "Cargo": usuario.get("Cargo", "N/A"),
-                    "Empresa": usuario.get("Empresa", "N/A"),
-                    "Email": usuario.get("Email", "N/A"),
-                    "Telefono": usuario.get("Telefono", "N/A"),
+                    "Nombre": user.get("Nombre"),
+                    "Cargo": user.get("Cargo"),
+                    "Empresa": user.get("Empresa"),
+                    "Email": user.get("Email"),
+                    "Telefono": user.get("Telefono"),
                     "Resultado": nivel,
                     "Presupuesto": dato_presupuesto,
-                    "Contacto_Ejecutivo": quiere_contacto # <-- Nueva columna
+                    "Contacto_Ejecutivo": quiere_contacto
                 }])
-                
-                # Leer historial para hacer el Append (no pisar datos)
+
+                # ESTRATEGIA ANTIPISADO: 
+                # Leemos primero pero nos aseguramos de no perder nada
                 try:
-                    df_existente = conn.read(spreadsheet=url_hoja)
-                    df_existente = df_existente.dropna(how='all')
+                    df_historico = conn.read(spreadsheet=url_hoja)
+                    # Eliminamos filas que sean totalmente nulas
+                    df_historico = df_historico.dropna(how='all')
+                    # Unimos lo nuevo al final
+                    df_final = pd.concat([df_historico, nueva_fila], ignore_index=True)
                 except:
-                    df_existente = pd.DataFrame(columns=nuevo_registro.columns)
-                
-                # Concatenar y subir
-                df_final = pd.concat([df_existente, nuevo_registro], ignore_index=True)
+                    # Si no hay nada, el final es solo lo nuevo
+                    df_final = nueva_fila
+
+                # Sobrescribimos la hoja completa con el histórico + el nuevo
                 conn.update(spreadsheet=url_hoja, data=df_final)
                 
                 st.session_state.enviado = True
                 st.balloons()
-                st.success("¡Datos guardados! Si seleccionaste 'SÍ', un ejecutivo te contactará pronto.")
+                st.success("¡Registro completado exitosamente!")
                 
             except Exception as e:
-                st.error(f"Error al guardar: {e}")
+                st.error(f"Error al sincronizar datos: {e}")
     else:
-        st.info("Tus resultados ya han sido registrados en nuestro sistema.")
+        st.info("Sus datos ya han sido registrados. ¡Gracias!")
 
     if st.button("Reiniciar Test"):
         st.session_state.clear()
