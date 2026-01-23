@@ -24,7 +24,6 @@ def leer_word(ruta):
 
 def normalizar(txt):
     if not txt: return ""
-    # Quitar tildes y símbolos, pasar a minúsculas
     t = str(txt).lower()
     rep = {"á":"a","é":"e","í":"i","ó":"o","ú":"u","ñ":"n"}
     for a, b in rep.items(): t = t.replace(a, b)
@@ -33,7 +32,7 @@ def normalizar(txt):
 
 def clean_pdf(txt):
     if not txt: return ""
-    rep = {"á":"a","é":"e","í":"i","ó":"o","ú":"u","ñ":"n","Á":"A","É":"E","Í":"I","Ó":"O","Ú":"U","Ñ":"N"}
+    rep = {"á":"a","é":"e","í":"i","ó":"o","ú":"u","ñ":"n","Á":"A","É":"E","Í":"I","Ó":"O","Ú":"U","Ñ":"N","¿":"","¡":""}
     t = str(txt)
     for a, b in rep.items(): t = t.replace(a, b)
     return t.encode('latin-1', 'ignore').decode('latin-1')
@@ -46,7 +45,14 @@ class PDF(FPDF):
 
 # --- ESTADO DE SESIÓN ---
 if 'etapa' not in st.session_state:
-    st.session_state.update({'etapa':'registro','paso':0,'respuestas':[],'datos_usuario':{},'enviado':False})
+    st.session_state.update({
+        'etapa': 'registro',
+        'paso': 0,
+        'respuestas_texto': [], # Guarda la respuesta elegida
+        'preguntas_texto': [],   # Guarda la pregunta realizada
+        'datos_usuario': {},
+        'enviado': False
+    })
 
 # --- ETAPA 1: REGISTRO ---
 if st.session_state.etapa == 'registro':
@@ -69,15 +75,21 @@ elif st.session_state.etapa == 'preguntas':
     if not df_p.empty:
         total_p = len(df_p)
         fila = df_p.iloc[st.session_state.paso]
+        pregunta_actual = fila['Clave']
+        
         st.subheader(f"Pregunta {st.session_state.paso + 1} de {total_p}")
-        st.write(f"### {fila['Clave']}")
+        st.write(f"### {pregunta_actual}")
+        
         opts = [o.strip() for o in fila['Contenido'].split('\n') if o.strip()]
-        es_m = "múltiple" in fila['Clave'].lower() or "multiple" in fila['Clave'].lower()
+        es_m = "múltiple" in pregunta_actual.lower() or "multiple" in pregunta_actual.lower()
         ans = st.multiselect("Seleccione:", opts) if es_m else st.radio("Opcion:", opts, index=None)
 
         if st.button("Continuar"):
             if ans:
-                st.session_state.respuestas.append(", ".join(ans) if isinstance(ans, list) else ans)
+                # Guardamos ambos datos para el reporte
+                st.session_state.preguntas_texto.append(pregunta_actual)
+                st.session_state.respuestas_texto.append(", ".join(ans) if isinstance(ans, list) else ans)
+                
                 if st.session_state.paso < total_p - 1:
                     st.session_state.paso += 1
                     st.rerun()
@@ -88,13 +100,15 @@ elif st.session_state.etapa == 'preguntas':
 # --- ETAPA 3: RESULTADOS Y CONTACTO ---
 elif st.session_state.etapa == 'resultado':
     st.title("✅ Evaluación Finalizada")
-    si_c = sum(1 for r in st.session_state.respuestas if "SI" in str(r).upper())
+    
+    # Cálculo nivel de madurez
+    si_c = sum(1 for r in st.session_state.respuestas_texto if "SI" in str(r).upper())
     nivel = "Avanzado" if si_c > 12 else "Intermedio" if si_c > 6 else "Inicial"
     st.metric("Nivel de Madurez Detectado", nivel)
 
     st.write("---")
     st.subheader("¿Deseas profundizar en tus resultados?")
-    contacto = st.radio("¿Quieres contactar a uno de nuestros ejecutivos?", ["SÍ", "NO"], index=0)
+    contacto = st.radio("¿Quieres contactar a uno de nuestros ejecutivos para una asesoría personalizada?", ["SÍ", "NO"], index=0)
 
     if not st.session_state.enviado:
         if st.button("Finalizar y Registrar"):
@@ -103,12 +117,11 @@ elif st.session_state.etapa == 'resultado':
                 url = st.secrets["connections"]["gsheets"]["spreadsheet"]
                 u = st.session_state.datos_usuario
                 
-                # Definimos exactamente 10 columnas para evitar errores de Google Sheets
                 data = {
                     "Fecha": [datetime.datetime.now().strftime("%Y-%m-%d %H:%M")],
                     "Nombre": [u["Nombre"]], "Cargo": [u["Cargo"]], "Empresa": [u["Empresa"]],
                     "Email": [u["Email"]], "Telefono": [u["Telefono"]], "Resultado": [nivel],
-                    "Presupuesto": ["N/A"], "Contacto": [contacto], "App": ["V3"]
+                    "Presupuesto": ["N/A"], "Contacto": [contacto], "App": ["V4"]
                 }
                 df_nuevo = pd.DataFrame(data)
                 hist = conn.read(spreadsheet=url, ttl=0)
@@ -120,53 +133,69 @@ elif st.session_state.etapa == 'resultado':
             except Exception as e:
                 st.error(f"Error al guardar: {e}")
     else:
-        st.success("¡Datos guardados! Ya puedes descargar tu informe.")
+        st.success("¡Datos registrados con éxito!")
         
+        # --- GENERACIÓN DEL PDF CON PREGUNTAS Y RECOMENDACIONES ---
         df_rec = leer_word("02. Respuestas.docx")
         pdf = PDF()
         pdf.add_page()
         
-        # Encabezado Datos
+        # Sección 1: Datos Cliente
         pdf.set_font("Arial", 'B', 12)
         pdf.cell(0, 10, "1. RESUMEN EJECUTIVO", 1, 1, 'L')
         pdf.set_font("Arial", '', 10)
         u = st.session_state.datos_usuario
         pdf.ln(2)
         pdf.cell(0, 7, clean_pdf(f"Cliente: {u['Nombre']} | Empresa: {u['Empresa']}"), 0, 1)
-        pdf.cell(0, 7, clean_pdf(f"Nivel de Madurez: {nivel}"), 0, 1)
+        pdf.cell(0, 7, clean_pdf(f"Nivel de Madurez Detectado: {nivel}"), 0, 1)
         pdf.ln(5)
 
+        # Sección 2: Detalle
         pdf.set_font("Arial", 'B', 12)
-        pdf.cell(0, 10, "2. PLAN DE ACCION Y RECOMENDACIONES", 1, 1, 'L')
+        pdf.cell(0, 10, "2. ANALISIS Y RECOMENDACIONES POR PUNTO", 1, 1, 'L')
         pdf.ln(4)
 
         match_count = 0
-        # BUSQUEDA ULTRA FLEXIBLE
-        for resp_u in st.session_state.respuestas:
-            partes = [p.strip() for p in resp_u.split(",")]
-            for p in partes:
+        # Iteramos usando el índice para obtener pregunta y respuesta juntas
+        for i in range(len(st.session_state.preguntas_texto)):
+            pregunta = st.session_state.preguntas_texto[i]
+            respuesta = st.session_state.respuestas_texto[i]
+            
+            # Buscamos recomendación
+            partes_ans = [p.strip() for p in respuesta.split(",")]
+            for p in partes_ans:
                 p_norm = normalizar(p)
                 if not p_norm: continue
                 
-                # Comparamos por CADA FILA del Word de respuestas
+                # Intentar match con el Word de respuestas
                 for _, row in df_rec.iterrows():
-                    # Si lo que el usuario respondió está DENTRO de la clave del Word (o viceversa)
                     clave_word_norm = normalizar(row['Clave'])
                     if p_norm in clave_word_norm or clave_word_norm in p_norm:
                         match_count += 1
+                        # Escribir Pregunta
                         pdf.set_font("Arial", 'B', 9)
-                        pdf.multi_cell(0, 6, clean_pdf(f"Punto: {p}"))
+                        pdf.set_text_color(100, 100, 100) # Gris para la pregunta
+                        pdf.multi_cell(0, 5, clean_pdf(f"Pregunta: {pregunta}"))
+                        
+                        # Escribir Hallazgo
+                        pdf.set_text_color(0, 0, 0) # Volver a negro
+                        pdf.set_font("Arial", 'I', 9)
+                        pdf.multi_cell(0, 5, clean_pdf(f"Hallazgo: {p}"))
+                        
+                        # Escribir Recomendación
                         pdf.set_font("Arial", '', 9)
-                        pdf.multi_cell(0, 6, clean_pdf(f"RECOMENDACION: {row['Contenido']}"))
+                        pdf.multi_cell(0, 5, clean_pdf(f"RECOMENDACION: {row['Contenido']}"))
                         pdf.ln(4)
-                        break # Evita duplicar si hay varios matches parciales
+                        break
 
-        if match_count == 0:
-            pdf.set_font("Arial", 'I', 10)
-            pdf.multi_cell(0, 10, "Aviso: No se encontraron recomendaciones vinculadas. Por favor, asegurese de que las opciones elegidas esten escritas en su archivo '02. Respuestas.docx'.")
+        st.download_button(
+            label="📥 DESCARGAR INFORME PDF COMPLETO", 
+            data=pdf.output(dest='S').encode('latin-1', 'replace'), 
+            file_name=f"Reporte_CS_{u['Empresa']}.pdf", 
+            mime="application/pdf",
+            use_container_width=True
+        )
 
-        st.download_button("📥 DESCARGAR INFORME PDF", pdf.output(dest='S').encode('latin-1', 'replace'), f"Reporte_{u['Empresa']}.pdf", "application/pdf")
-
-    if st.button("Reiniciar Test"):
+    if st.button("Realizar nuevo Assessment"):
         st.session_state.clear()
         st.rerun()
