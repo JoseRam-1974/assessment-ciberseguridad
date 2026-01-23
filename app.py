@@ -5,7 +5,7 @@ import datetime
 from streamlit_gsheets import GSheetsConnection
 from fpdf import FPDF
 
-# --- CONFIGURACION ---
+# --- CONFIGURACION DE PAGINA ---
 st.set_page_config(page_title="Assessment Ciberseguridad", page_icon="🛡️", layout="wide")
 
 def leer_preguntas_word(ruta):
@@ -19,18 +19,25 @@ def leer_preguntas_word(ruta):
     except:
         return pd.DataFrame()
 
-# Funcion para limpiar texto para el PDF (Elimina tildes y caracteres especiales)
-def clean_t(txt):
-    r = (("á","a"),("é","e"),("í","i"),("ó","o"),("ú","u"),("ñ","n"),("Á","A"),("É","E"),("Í","I"),("Ó","O"),("Ú","U"),("Ñ","N"),("¿",""),("¡",""))
-    t = str(txt)
-    for a, b in r:
+# Funcion para limpiar texto para el PDF (Crucial para evitar UnicodeEncodeError)
+def clean_pdf_text(texto):
+    if not texto: return ""
+    # Mapeo manual de caracteres conflictivos
+    rep = {
+        "á": "a", "é": "e", "í": "i", "ó": "o", "ú": "u",
+        "Á": "A", "É": "E", "Í": "I", "Ó": "O", "Ú": "U",
+        "ñ": "n", "Ñ": "N", "¿": "", "¡": "", "º": ".", "ª": "."
+    }
+    t = str(texto)
+    for a, b in rep.items():
         t = t.replace(a, b)
-    return t
+    # Forzar codificacion latin-1 ignorando lo que no se pudo convertir
+    return t.encode('latin-1', 'ignore').decode('latin-1')
 
 class InformePDF(FPDF):
     def header(self):
         self.set_font('Arial', 'B', 15)
-        self.cell(0, 10, 'REPORTE DE MADUREZ DIGITAL CS', 0, 1, 'C')
+        self.cell(0, 10, 'INFORME DE MADUREZ EN CIBERSEGURIDAD', 0, 1, 'C')
         self.ln(5)
     def footer(self):
         self.set_y(-15)
@@ -43,117 +50,136 @@ if 'etapa' not in st.session_state:
 
 # --- ETAPA 1: REGISTRO ---
 if st.session_state.etapa == 'registro':
-    st.title("🛡️ Diagnostico de Madurez CS")
-    with st.form("reg"):
+    st.title("🛡️ Diagnóstico de Ciberseguridad")
+    with st.form("registro_inicial"):
         c1, c2 = st.columns(2)
         with c1:
-            n = st.text_input("Nombre*")
-            c = st.text_input("Cargo*")
-            e = st.text_input("Empresa*")
+            nom = st.text_input("Nombre Completo*")
+            car = st.text_input("Cargo*")
+            emp = st.text_input("Empresa*")
         with c2:
-            em = st.text_input("Email*")
-            t = st.text_input("Telefono*")
-        if st.form_submit_button("Siguiente"):
-            if all([n, c, e, em, t]):
-                st.session_state.datos_usuario = {"Nombre":n,"Cargo":c,"Empresa":e,"Email":em,"Telefono":t}
+            ema = st.text_input("Email*")
+            tel = st.text_input("Teléfono*")
+        if st.form_submit_button("Iniciar Evaluación"):
+            if all([nom, car, emp, ema, tel]):
+                st.session_state.datos_usuario = {"Nombre":nom,"Cargo":car,"Empresa":emp,"Email":ema,"Telefono":tel}
                 st.session_state.etapa = 'preguntas'
                 st.rerun()
             else:
-                st.warning("Complete los campos")
+                st.warning("Complete los campos obligatorios")
 
 # --- ETAPA 2: PREGUNTAS ---
 elif st.session_state.etapa == 'preguntas':
-    df = leer_preguntas_word("01. Preguntas.docx")
-    if not df.empty:
-        f = df.iloc[st.session_state.paso]
-        st.subheader(f"Pregunta {st.session_state.paso + 1} de {len(df)}")
-        st.write(f"### {f['Pregunta']}")
-        opts = [o.strip() for o in f['Opciones'].split('\n') if o.strip()]
+    df_preguntas = leer_preguntas_word("01. Preguntas.docx")
+    if not df_preguntas.empty:
+        total_p = len(df_preguntas)
+        fila_q = df_preguntas.iloc[st.session_state.paso]
         
-        # Seleccion multiple o simple
-        es_m = any(k in f['Pregunta'].lower() for k in ["seleccione","cuales","indique"])
-        res = st.multiselect("Opciones:", opts) if es_m else st.radio("Opcion:", opts, index=None)
+        st.subheader(f"Pregunta {st.session_state.paso + 1} de {total_p}")
+        st.write(f"### {fila_q['Pregunta']}")
+        
+        opciones = [o.strip() for o in fila_q['Opciones'].split('\n') if o.strip()]
+        
+        # DETECCION POR PALABRA "MULTIPLE"
+        es_multiple = "múltiple" in fila_q['Pregunta'].lower() or "multiple" in fila_q['Pregunta'].lower()
+        
+        if es_multiple:
+            st.info("💡 Selección Múltiple habilitada")
+            respuesta = st.multiselect("Seleccione una o más opciones:", opciones, key=f"p_{st.session_state.paso}")
+        else:
+            respuesta = st.radio("Seleccione una opción:", opciones, index=None, key=f"p_{st.session_state.paso}")
 
-        if st.button("Siguiente"):
-            if res:
-                st.session_state.respuestas.append(", ".join(res) if isinstance(res, list) else res)
-                if st.session_state.paso < len(df) - 1:
+        if st.button("Siguiente Pregunta"):
+            if respuesta:
+                dato = ", ".join(respuesta) if isinstance(respuesta, list) else respuesta
+                st.session_state.respuestas.append(dato)
+                if st.session_state.paso < total_p - 1:
                     st.session_state.paso += 1
                     st.rerun()
                 else:
                     st.session_state.etapa = 'resultado'
                     st.rerun()
+            else:
+                st.error("Debe responder para continuar.")
 
-# --- ETAPA 3: RESULTADOS ---
+# --- ETAPA 3: RESULTADOS Y GUARDADO ---
 elif st.session_state.etapa == 'resultado':
-    st.title("✅ Assessment completado")
-    si = sum(1 for r in st.session_state.respuestas if "SI" in str(r).upper())
-    niv = "Avanzado" if si > 12 else "Intermedio" if si > 6 else "Inicial"
+    st.title("✅ Assessment Completado")
     
-    try: presu = st.session_state.respuestas[15]
-    except: presu = "N/A"
+    # Cálculo de nivel (Lógica SI/NO)
+    conteo_si = sum(1 for r in st.session_state.respuestas if "SI" in str(r).upper())
+    nivel_final = "Avanzado" if conteo_si > 12 else "Intermedio" if conteo_si > 6 else "Inicial"
+    
+    try: presu_valor = st.session_state.respuestas[15]
+    except: presu_valor = "N/A"
 
-    st.metric("Nivel Detectado", niv)
-    cont = st.radio("¿Desea contacto de un ejecutivo?", ["SI", "NO"], index=1, horizontal=True)
+    st.metric("Nivel de Madurez Detectado", nivel_final)
+    st.divider()
+    
+    quiero_asesoria = st.radio("¿Quieres contactar a un ejecutivo para asesoría personalizada?", ["SÍ", "NO"], index=1, horizontal=True)
 
     if not st.session_state.enviado:
-        if st.button("Finalizar y Guardar"):
+        if st.button("Finalizar y Guardar en Sistema"):
             try:
                 conn = st.connection("gsheets", type=GSheetsConnection)
-                url = st.secrets["connections"]["gsheets"]["spreadsheet"]
-                u = st.session_state.datos_usuario
-                col_names = ["Fecha","Nombre","Cargo","Empresa","Email","Telefono","Resultado","Presupuesto","Contacto"]
+                url_sheet = st.secrets["connections"]["gsheets"]["spreadsheet"]
+                u_info = st.session_state.datos_usuario
                 
-                nuevo = pd.DataFrame([{
+                header_cols = ["Fecha","Nombre","Cargo","Empresa","Email","Telefono","Resultado","Presupuesto","Contacto"]
+                
+                registro_nuevo = pd.DataFrame([{
                     "Fecha": datetime.datetime.now().strftime("%d/%m/%Y %H:%M"),
-                    "Nombre":u["Nombre"],"Cargo":u["Cargo"],"Empresa":u["Empresa"],"Email":u["Email"],
-                    "Telefono":u["Telefono"],"Resultado":niv,"Presupuesto":presu,"Contacto":cont
+                    "Nombre": u_info["Nombre"], "Cargo": u_info["Cargo"], "Empresa": u_info["Empresa"],
+                    "Email": u_info["Email"], "Telefono": u_info["Telefono"],
+                    "Resultado": nivel_final, "Presupuesto": presu_valor, "Contacto": quiero_asesoria
                 }])
 
                 try:
-                    hist = conn.read(spreadsheet=url, ttl=0).reindex(columns=col_names)
-                    final = pd.concat([hist.dropna(how='all'), nuevo], ignore_index=True)
+                    df_historico = conn.read(spreadsheet=url_sheet, ttl=0).reindex(columns=header_cols)
+                    df_final = pd.concat([df_historico.dropna(how='all'), registro_nuevo], ignore_index=True)
                 except:
-                    final = nuevo
+                    df_final = registro_nuevo
 
-                conn.update(spreadsheet=url, data=final)
+                conn.update(spreadsheet=url_sheet, data=df_final)
                 st.session_state.enviado = True
                 st.rerun()
             except Exception as e:
-                st.error(f"Error al guardar: {e}")
+                st.error(f"Error de conexión: {e}")
     else:
-        st.success("Datos registrados exitosamente.")
+        st.success("Tus datos han sido registrados exitosamente.")
         
-        # Generacion de PDF
-        pdf = InformePDF()
-        pdf.add_page()
-        pdf.set_font("Arial", 'B', 12)
-        pdf.cell(0, 10, "DATOS DEL CLIENTE", 1, 1, 'C')
-        pdf.set_font("Arial", '', 10)
+        # Generación de PDF sin caracteres especiales
+        pdf_doc = InformePDF()
+        pdf_doc.add_page()
+        pdf_doc.set_font("Arial", 'B', 12)
+        pdf_doc.cell(0, 10, clean_pdf_text("DATOS DEL CLIENTE"), 1, 1, 'C')
+        pdf_doc.set_font("Arial", '', 10)
+        
         for k, v in st.session_state.datos_usuario.items():
-            pdf.cell(40, 8, f"{clean_t(k)}:", 0, 0)
-            pdf.cell(0, 8, f"{clean_t(v)}", 0, 1)
+            pdf_doc.cell(40, 8, f"{clean_pdf_text(k)}:", 0, 0)
+            pdf_doc.cell(0, 8, f"{clean_pdf_text(v)}", 0, 1)
         
-        pdf.ln(5)
-        pdf.cell(0, 10, f"Nivel: {niv}", 0, 1)
-        pdf.cell(0, 10, f"Presupuesto: {clean_t(presu)}", 0, 1)
+        pdf_doc.ln(5)
+        pdf_doc.cell(0, 10, f"Nivel: {nivel_final}", 0, 1)
+        pdf_doc.cell(0, 10, f"Presupuesto: {clean_pdf_text(presu_valor)}", 0, 1)
         
-        pdf.ln(5)
-        pdf.set_font("Arial", 'B', 10)
-        pdf.cell(0, 10, "RESPUESTAS:", 0, 1)
-        pdf.set_font("Arial", '', 8)
-        for i, r in enumerate(st.session_state.respuestas):
-            pdf.multi_cell(0, 5, f"P{i+1}: {clean_t(r)}")
-            pdf.ln(1)
+        pdf_doc.ln(5)
+        pdf_doc.set_font("Arial", 'B', 10)
+        pdf_doc.cell(0, 10, "RESPUESTAS DETALLADAS:", 0, 1)
+        pdf_doc.set_font("Arial", '', 8)
+        
+        for idx, res_texto in enumerate(st.session_state.respuestas):
+            pdf_doc.multi_cell(0, 5, f"P{idx+1}: {clean_pdf_text(res_texto)}")
+            pdf_doc.ln(1)
 
+        # Descarga de PDF
         st.download_button(
-            label="Descargar PDF",
-            data=pdf.output(dest='S').encode('latin-1', errors='replace'),
-            file_name="Reporte_Madurez.pdf",
+            label="📥 Descargar Reporte PDF",
+            data=pdf_doc.output(dest='S').encode('latin-1'),
+            file_name="Assessment_Ciberseguridad.pdf",
             mime="application/pdf"
         )
 
-    if st.button("Realizar nuevo test"):
+    if st.button("Realizar nueva evaluación"):
         st.session_state.clear()
         st.rerun()
-
