@@ -88,7 +88,7 @@ elif st.session_state.etapa == 'preguntas':
 elif st.session_state.etapa == 'resultado':
     st.success("✅ Evaluación finalizada correctamente.")
     
-    # 1. Cálculos de Madurez y Presupuesto
+    # 1. Cálculos base
     si_count = sum(1 for r in st.session_state.respuestas if "SI" in str(r).upper())
     nivel = "Avanzado" if si_count > 12 else "Intermedio" if si_count > 6 else "Inicial"
     
@@ -106,51 +106,52 @@ elif st.session_state.etapa == 'resultado':
         "¿Quieres contactar a uno de nuestros ejecutivos para recibir una asesoría personalizada?",
         ["SÍ", "NO"],
         index=1,
-        horizontal=True
+        horizontal=True,
+        key="radio_contacto"
     )
 
-    # 3. Botón de Registro con "Append" Real
+    # 3. Botón de Registro
     if not st.session_state.enviado:
-        if st.button("Finalizar y Registrar Resultados"):
+        if st.button("Finalizar y Registrar Resultados", key="btn_guardar"):
             try:
+                # Conexión
                 conn = st.connection("gsheets", type=GSheetsConnection)
                 url_hoja = st.secrets["connections"]["gsheets"]["spreadsheet"]
                 user = st.session_state.datos_usuario
                 
-                # Fila individual
-                nueva_fila = pd.DataFrame([{
-                    "Fecha": datetime.datetime.now().strftime("%d/%m/%Y %H:%M"),
-                    "Nombre": user.get("Nombre"),
-                    "Cargo": user.get("Cargo"),
-                    "Empresa": user.get("Empresa"),
-                    "Email": user.get("Email"),
-                    "Telefono": user.get("Telefono"),
-                    "Resultado": nivel,
-                    "Presupuesto": dato_presupuesto,
-                    "Contacto_Ejecutivo": quiere_contacto
-                }])
+                # Preparamos la nueva fila como una lista simple (formato para append)
+                nueva_fila_lista = [
+                    datetime.datetime.now().strftime("%d/%m/%Y %H:%M"),
+                    user.get("Nombre", "N/A"),
+                    user.get("Cargo", "N/A"),
+                    user.get("Empresa", "N/A"),
+                    user.get("Email", "N/A"),
+                    user.get("Telefono", "N/A"),
+                    nivel,
+                    str(dato_presupuesto),
+                    quiere_contacto
+                ]
 
-                # ESTRATEGIA ANTIPISADO: 
-                # Leemos primero pero nos aseguramos de no perder nada
-                try:
-                    df_historico = conn.read(spreadsheet=url_hoja)
-                    # Eliminamos filas que sean totalmente nulas
-                    df_historico = df_historico.dropna(how='all')
-                    # Unimos lo nuevo al final
-                    df_final = pd.concat([df_historico, nueva_fila], ignore_index=True)
-                except:
-                    # Si no hay nada, el final es solo lo nuevo
-                    df_final = nueva_fila
-
-                # Sobrescribimos la hoja completa con el histórico + el nuevo
+                # --- NUEVA ESTRATEGIA DE GUARDADO ---
+                # 1. Intentamos leer lo que hay (sin caché)
+                df_historico = conn.read(spreadsheet=url_hoja, ttl=0) # ttl=0 evita que lea datos viejos
+                
+                # 2. Convertimos el nuevo registro en DataFrame
+                df_nuevo = pd.DataFrame([nueva_fila_lista], columns=df_historico.columns if not df_historico.empty else ["Fecha", "Nombre", "Cargo", "Empresa", "Email", "Telefono", "Resultado", "Presupuesto", "Contacto_Ejecutivo"])
+                
+                # 3. Concatenamos asegurando que no haya filas vacías en el medio
+                df_final = pd.concat([df_historico.dropna(how='all'), df_nuevo], ignore_index=True)
+                
+                # 4. ACTUALIZAMOS EL RANGO COMPLETO
                 conn.update(spreadsheet=url_hoja, data=df_final)
                 
                 st.session_state.enviado = True
                 st.balloons()
-                st.success("¡Registro completado exitosamente!")
+                st.success("¡Registro añadido exitosamente!")
+                st.rerun() # Forzamos recarga para bloquear el botón
                 
             except Exception as e:
-                st.error(f"Error al sincronizar datos: {e}")
+                st.error(f"Error crítico al guardar: {e}")
     else:
         st.info("Sus datos ya han sido registrados. ¡Gracias!")
 
