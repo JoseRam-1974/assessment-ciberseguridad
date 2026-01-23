@@ -4,6 +4,7 @@ from docx import Document
 import datetime
 from streamlit_gsheets import GSheetsConnection
 from fpdf import FPDF
+import re
 
 # --- CONFIGURACIÓN ---
 st.set_page_config(page_title="Assessment Ciberseguridad", page_icon="🛡️", layout="wide")
@@ -19,9 +20,21 @@ def leer_word(ruta):
     except:
         return pd.DataFrame()
 
-def clean_t(txt):
+# Función para limpiar texto para comparaciones internas (Súper agresiva)
+def normalizar(txt):
     if not txt: return ""
-    rep = {"á":"a","é":"e","í":"i","ó":"o","ú":"u","ñ":"n","Á":"A","É":"E","Í":"I","Ó":"O","Ú":"U","Ñ":"N","¿":"","¡":"","ü":"u","(":"[",")":"]"}
+    t = str(txt).lower()
+    # Eliminar tildes
+    rep = {"á":"a","é":"e","í":"i","ó":"o","ú":"u","ñ":"n"}
+    for a, b in rep.items(): t = t.replace(a, b)
+    # Eliminar todo lo que no sean letras o números
+    t = re.sub(r'[^a-z0-9]', '', t)
+    return t
+
+# Función para que el PDF no falle con símbolos
+def clean_pdf(txt):
+    if not txt: return ""
+    rep = {"á":"a","é":"e","í":"i","ó":"o","ú":"u","ñ":"n","Á":"A","É":"E","Í":"I","Ó":"O","Ú":"U","Ñ":"N","¿":"","¡":"","(":"[",")":"]"}
     t = str(txt)
     for a, b in rep.items(): t = t.replace(a, b)
     return t.encode('latin-1', 'ignore').decode('latin-1')
@@ -39,13 +52,13 @@ if 'etapa' not in st.session_state:
 # --- ETAPA 1: REGISTRO ---
 if st.session_state.etapa == 'registro':
     st.title("🛡️ Registro de Evaluación")
-    with st.form("form_reg"):
+    with st.form("reg"):
         c1, c2 = st.columns(2)
         with c1:
             nom, car, emp = st.text_input("Nombre*"), st.text_input("Cargo*"), st.text_input("Empresa*")
         with c2:
             ema, tel = st.text_input("Email*"), st.text_input("Telefono*")
-        if st.form_submit_button("Iniciar Assessment"):
+        if st.form_submit_button("Siguiente"):
             if all([nom, car, emp, ema, tel]):
                 st.session_state.datos_usuario = {"Nombre":nom,"Cargo":car,"Empresa":emp,"Email":ema,"Telefono":tel}
                 st.session_state.etapa = 'preguntas'
@@ -75,15 +88,13 @@ elif st.session_state.etapa == 'preguntas':
 
 # --- ETAPA 3: RESULTADOS ---
 elif st.session_state.etapa == 'resultado':
-    st.title("✅ Análisis Finalizado")
+    st.title("✅ Evaluación Finalizada")
     si_c = sum(1 for r in st.session_state.respuestas if "SI" in str(r).upper())
     nivel = "Avanzado" if si_c > 12 else "Intermedio" if si_c > 6 else "Inicial"
-    st.metric("Nivel de Madurez", nivel)
-    
-    cont = st.radio("¿Desea asesoría personalizada?", ["SÍ", "NO"], index=1, horizontal=True)
+    st.metric("Nivel Detectado", nivel)
 
     if not st.session_state.enviado:
-        if st.button("Guardar y Generar Informe"):
+        if st.button("Finalizar y Guardar Resultados"):
             try:
                 conn = st.connection("gsheets", type=GSheetsConnection)
                 url = st.secrets["connections"]["gsheets"]["spreadsheet"]
@@ -92,7 +103,7 @@ elif st.session_state.etapa == 'resultado':
                 nuevo = pd.DataFrame([{
                     "Fecha": datetime.datetime.now().strftime("%d/%m/%Y %H:%M"),
                     "Nombre":u["Nombre"],"Cargo":u["Cargo"],"Empresa":u["Empresa"],"Email":u["Email"],
-                    "Telefono":u["Telefono"],"Resultado":nivel,"Presupuesto":"Ver PDF","Contacto":cont
+                    "Telefono":u["Telefono"],"Resultado":nivel,"Presupuesto":"Ver PDF","Contacto":"SI"
                 }])
                 try:
                     hist = conn.read(spreadsheet=url, ttl=0).reindex(columns=cols)
@@ -103,60 +114,58 @@ elif st.session_state.etapa == 'resultado':
                 st.session_state.enviado = True
                 st.rerun()
             except Exception as e:
-                st.error(f"Error de conexión: {e}")
+                st.error(f"Error al guardar: {e}")
     else:
-        st.success("Resultados registrados. Generando reporte...")
+        st.success("Resultados guardados correctamente.")
         
-        # CARGAR RECOMENDACIONES
+        # GENERAR REPORTE
         df_rec = leer_word("02. Respuestas.docx")
+        # Pre-normalizar la columna Clave de las recomendaciones para el match
+        df_rec['Clave_Norm'] = df_rec['Clave'].apply(normalizar)
         
         pdf = PDF()
         pdf.add_page()
-        
-        # Sección 1
         pdf.set_font("Arial", 'B', 12)
         pdf.cell(0, 10, "1. SITUACION ACTUAL", 1, 1, 'L')
         pdf.set_font("Arial", '', 10)
         u = st.session_state.datos_usuario
         pdf.ln(2)
-        pdf.cell(0, 7, clean_t(f"Empresa: {u['Empresa']} | Nivel detectado: {nivel}"), 0, 1)
+        pdf.cell(0, 7, clean_pdf(f"Empresa: {u['Empresa']} | Nivel: {nivel}"), 0, 1)
         pdf.ln(5)
 
-        # Sección 2
         pdf.set_font("Arial", 'B', 12)
-        pdf.cell(0, 10, "2. PLAN DE ACCION Y RECOMENDACIONES", 1, 1, 'L')
+        pdf.cell(0, 10, "2. RECOMENDACIONES TECNICAS PERSONALIZADAS", 1, 1, 'L')
         pdf.ln(4)
 
-        encontrados = 0
-        for r_u in st.session_state.respuestas:
-            indiv = [s.strip() for s in r_u.split(",")]
-            for s in indiv:
-                # BÚSQUEDA FLEXIBLE: Quitamos espacios y pasamos a minúsculas para comparar
-                s_clean = s.strip().lower()
-                # Buscamos en el dataframe de recomendaciones
-                match = df_rec[df_rec['Clave'].str.strip().str.lower() == s_clean]
+        match_count = 0
+        for resp_u in st.session_state.respuestas:
+            # Separar si es multiselect
+            partes = [p.strip() for p in resp_u.split(",")]
+            for p in partes:
+                p_norm = normalizar(p)
+                # Buscar por la versión normalizada (sin espacios, sin puntos, sin tildes)
+                match = df_rec[df_rec['Clave_Norm'] == p_norm]
                 
                 if not match.empty:
-                    encontrados += 1
+                    match_count += 1
                     pdf.set_font("Arial", 'B', 9)
-                    pdf.multi_cell(0, 6, clean_t(f"Punto detectado: {s}"))
+                    pdf.multi_cell(0, 6, clean_pdf(f"> Hallazgo: {p}"))
                     pdf.set_font("Arial", '', 9)
-                    pdf.multi_cell(0, 6, clean_t(f"RECOMENDACION: {match.iloc[0]['Contenido']}"))
-                    pdf.ln(3)
+                    pdf.multi_cell(0, 6, clean_pdf(f"RECOMENDACION: {match.iloc[0]['Contenido']}"))
+                    pdf.ln(4)
         
-        # Si no encontró nada, ponemos un aviso para que no salga en blanco
-        if encontrados == 0:
+        if match_count == 0:
             pdf.set_font("Arial", 'I', 10)
-            pdf.multi_cell(0, 10, "No se encontraron recomendaciones especificas para las respuestas seleccionadas. Por favor, verifique que los textos en '01. Preguntas' y '02. Respuestas' coincidan exactamente.")
+            pdf.multi_cell(0, 10, "Aviso: No se encontraron coincidencias exactas. Revise la redaccion de sus archivos Word.")
 
         st.download_button(
-            label="📥 Descargar Reporte de Recomendaciones",
+            label="📥 Descargar Informe Completo (PDF)",
             data=pdf.output(dest='S').encode('latin-1'),
-            file_name=f"Recomendaciones_{u['Empresa']}.pdf",
-            mime="application/pdf",
-            use_container_width=True
+            file_name=f"Reporte_CS_{u['Empresa']}.pdf",
+            mime="application/pdf"
         )
 
     if st.button("Reiniciar"):
         st.session_state.clear()
         st.rerun()
+
