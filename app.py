@@ -63,16 +63,30 @@ elif st.session_state.etapa == 'preguntas':
     if not df_preguntas.empty:
         total = len(df_preguntas)
         pregunta_actual = df_preguntas.iloc[st.session_state.paso]
+        texto_pregunta = pregunta_actual['Pregunta']
         
         st.write(f"**Pregunta {st.session_state.paso + 1} de {total}**")
-        st.markdown(f"### {pregunta_actual['Pregunta']}")
+        st.markdown(f"### {texto_pregunta}")
         
         opciones = [opt.strip() for opt in pregunta_actual['Opciones'].split('\n') if opt.strip()]
-        seleccion = st.radio("Seleccione una opción:", opciones, index=None)
+
+        # DETECCIÓN AUTOMÁTICA DE SELECCIÓN MÚLTIPLE
+        # Si la pregunta contiene palabras clave como "seleccione las" o "cuáles", activamos multiselect
+        keywords_multiple = ["seleccione las", "cuáles", "cuales", "múltiple", "indique las"]
+        es_multiple = any(key in texto_pregunta.lower() for key in keywords_multiple)
+
+        if es_multiple:
+            st.info("💡 Puedes seleccionar varias opciones")
+            seleccion = st.multiselect("Seleccione una o más opciones:", opciones, key=f"p_{st.session_state.paso}")
+        else:
+            seleccion = st.radio("Seleccione una opción:", opciones, index=None, key=f"p_{st.session_state.paso}")
 
         if st.button("Continuar"):
-            if seleccion:
-                st.session_state.respuestas.append(seleccion)
+            if seleccion: # Verifica que no esté vacío (funciona para lista o string)
+                # Si es múltiple, lo guardamos como un texto separado por comas para que quepa en una celda de Excel
+                dato_a_guardar = ", ".join(seleccion) if isinstance(seleccion, list) else seleccion
+                st.session_state.respuestas.append(dato_a_guardar)
+                
                 if st.session_state.paso < total - 1:
                     st.session_state.paso += 1
                     st.rerun()
@@ -80,9 +94,9 @@ elif st.session_state.etapa == 'preguntas':
                     st.session_state.etapa = 'resultado'
                     st.rerun()
             else:
-                st.warning("Debe seleccionar una respuesta para continuar.")
+                st.warning("Debe seleccionar al menos una respuesta para continuar.")
     else:
-        st.error("No se encontraron preguntas en el archivo '01. Preguntas.docx'.")
+        st.error("No se encontraron preguntas en el archivo.")
 
 # --- ETAPA 3: FINALIZADO Y GUARDADO ---
 elif st.session_state.etapa == 'resultado':
@@ -169,3 +183,4 @@ elif st.session_state.etapa == 'resultado':
     if st.button("Reiniciar Test"):
         st.session_state.clear()
         st.rerun()
+
