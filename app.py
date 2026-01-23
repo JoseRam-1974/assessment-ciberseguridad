@@ -20,18 +20,15 @@ def leer_word(ruta):
     except:
         return pd.DataFrame()
 
-# Función para limpiar texto para comparaciones internas (Súper agresiva)
 def normalizar(txt):
     if not txt: return ""
     t = str(txt).lower()
-    # Eliminar tildes
     rep = {"á":"a","é":"e","í":"i","ó":"o","ú":"u","ñ":"n"}
     for a, b in rep.items(): t = t.replace(a, b)
-    # Eliminar todo lo que no sean letras o números
-    t = re.sub(r'[^a-z0-9]', '', t)
-    return t
+    # Dejamos espacios para búsqueda por contención
+    t = re.sub(r'[^a-z0-9 ]', '', t)
+    return t.strip()
 
-# Función para que el PDF no falle con símbolos
 def clean_pdf(txt):
     if not txt: return ""
     rep = {"á":"a","é":"e","í":"i","ó":"o","ú":"u","ñ":"n","Á":"A","É":"E","Í":"I","Ó":"O","Ú":"U","Ñ":"N","¿":"","¡":"","(":"[",")":"]"}
@@ -93,8 +90,12 @@ elif st.session_state.etapa == 'resultado':
     nivel = "Avanzado" if si_c > 12 else "Intermedio" if si_c > 6 else "Inicial"
     st.metric("Nivel Detectado", nivel)
 
+    # RE-INTRODUCCIÓN DE PREGUNTA DE CONTACTO
+    st.subheader("¿Deseas profundizar en tus resultados?")
+    quiero_contacto = st.radio("¿Quieres contactar a uno de nuestros ejecutivos para recibir una asesoría personalizada?", ["SÍ", "NO"], index=0)
+
     if not st.session_state.enviado:
-        if st.button("Finalizar y Guardar Resultados"):
+        if st.button("Finalizar y Registrar Resultados"):
             try:
                 conn = st.connection("gsheets", type=GSheetsConnection)
                 url = st.secrets["connections"]["gsheets"]["spreadsheet"]
@@ -103,7 +104,7 @@ elif st.session_state.etapa == 'resultado':
                 nuevo = pd.DataFrame([{
                     "Fecha": datetime.datetime.now().strftime("%d/%m/%Y %H:%M"),
                     "Nombre":u["Nombre"],"Cargo":u["Cargo"],"Empresa":u["Empresa"],"Email":u["Email"],
-                    "Telefono":u["Telefono"],"Resultado":nivel,"Presupuesto":"Ver PDF","Contacto":"SI"
+                    "Telefono":u["Telefono"],"Resultado":nivel,"Presupuesto":"Ver PDF","Contacto":quiero_contacto
                 }])
                 try:
                     hist = conn.read(spreadsheet=url, ttl=0).reindex(columns=cols)
@@ -116,11 +117,10 @@ elif st.session_state.etapa == 'resultado':
             except Exception as e:
                 st.error(f"Error al guardar: {e}")
     else:
-        st.success("Resultados guardados correctamente.")
+        st.success(f"¡Datos guardados! {'Un ejecutivo te contactará pronto.' if quiero_contacto == 'SÍ' else ''}")
         
         # GENERAR REPORTE
         df_rec = leer_word("02. Respuestas.docx")
-        # Pre-normalizar la columna Clave de las recomendaciones para el match
         df_rec['Clave_Norm'] = df_rec['Clave'].apply(normalizar)
         
         pdf = PDF()
@@ -134,29 +134,32 @@ elif st.session_state.etapa == 'resultado':
         pdf.ln(5)
 
         pdf.set_font("Arial", 'B', 12)
-        pdf.cell(0, 10, "2. RECOMENDACIONES TECNICAS PERSONALIZADAS", 1, 1, 'L')
+        pdf.cell(0, 10, "2. PLAN DE ACCION Y RECOMENDACIONES", 1, 1, 'L')
         pdf.ln(4)
 
         match_count = 0
         for resp_u in st.session_state.respuestas:
-            # Separar si es multiselect
             partes = [p.strip() for p in resp_u.split(",")]
             for p in partes:
                 p_norm = normalizar(p)
-                # Buscar por la versión normalizada (sin espacios, sin puntos, sin tildes)
-                match = df_rec[df_rec['Clave_Norm'] == p_norm]
+                if not p_norm: continue
+                
+                # BUSQUEDA POR CONTENCIÓN (Más flexible)
+                # Buscamos si el texto normalizado del usuario está dentro de la clave normalizada del Word
+                match = df_rec[df_rec['Clave_Norm'].str.contains(p_norm, na=False)]
                 
                 if not match.empty:
                     match_count += 1
                     pdf.set_font("Arial", 'B', 9)
                     pdf.multi_cell(0, 6, clean_pdf(f"> Hallazgo: {p}"))
                     pdf.set_font("Arial", '', 9)
+                    # Tomamos la recomendación de la primera coincidencia encontrada
                     pdf.multi_cell(0, 6, clean_pdf(f"RECOMENDACION: {match.iloc[0]['Contenido']}"))
                     pdf.ln(4)
         
         if match_count == 0:
             pdf.set_font("Arial", 'I', 10)
-            pdf.multi_cell(0, 10, "Aviso: No se encontraron coincidencias exactas. Revise la redaccion de sus archivos Word.")
+            pdf.multi_cell(0, 10, "No se encontraron recomendaciones detalladas. Revise que las opciones en '01. Preguntas' esten presentes en '02. Respuestas'.")
 
         st.download_button(
             label="📥 Descargar Informe Completo (PDF)",
@@ -165,7 +168,6 @@ elif st.session_state.etapa == 'resultado':
             mime="application/pdf"
         )
 
-    if st.button("Reiniciar"):
+    if st.button("Reiniciar Test"):
         st.session_state.clear()
         st.rerun()
-
