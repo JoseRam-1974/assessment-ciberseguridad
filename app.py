@@ -88,10 +88,17 @@ elif st.session_state.etapa == 'preguntas':
 elif st.session_state.etapa == 'resultado':
     st.success("✅ Evaluación finalizada correctamente.")
     
-    # Cálculo de madurez
+    # 1. Lógica de madurez
     si_count = sum(1 for r in st.session_state.respuestas if "SI" in str(r).upper())
     nivel = "Avanzado" if si_count > 12 else "Intermedio" if si_count > 6 else "Inicial"
     
+    # 2. EXTRAER DATO DE PRESUPUESTO (Pregunta 16)
+    # Las listas en Python empiezan en 0, por lo que la pregunta 16 es el índice 15
+    try:
+        dato_presupuesto = st.session_state.respuestas[15] 
+    except IndexError:
+        dato_presupuesto = "No respondido"
+
     st.metric("Nivel de Madurez Detectado", nivel)
 
     if not st.session_state.enviado:
@@ -100,7 +107,7 @@ elif st.session_state.etapa == 'resultado':
             usuario = st.session_state.datos_usuario
             url_hoja = st.secrets["connections"]["gsheets"]["spreadsheet"]
             
-            # 1. Preparamos la nueva fila
+            # 3. Preparamos la nueva fila incluyendo el Presupuesto
             nueva_fila = pd.DataFrame([{
                 "Fecha": datetime.datetime.now().strftime("%d/%m/%Y %H:%M"),
                 "Nombre": usuario.get("Nombre", "N/A"),
@@ -108,27 +115,22 @@ elif st.session_state.etapa == 'resultado':
                 "Empresa": usuario.get("Empresa", "N/A"),
                 "Email": usuario.get("Email", "N/A"),
                 "Telefono": usuario.get("Telefono", "N/A"),
-                "Resultado": nivel
+                "Resultado": nivel,
+                "Presupuesto": dato_presupuesto  # <-- Nueva columna
             }])
             
-            # 2. Intentamos leer la hoja (sin especificar nombre de pestaña para evitar errores)
+            # 4. Leemos, concatenamos y actualizamos
             try:
                 df_previo = conn.read(spreadsheet=url_hoja)
             except:
-                # Si falla (hoja vacía), creamos un DF vacío con las columnas correctas
                 df_previo = pd.DataFrame(columns=nueva_fila.columns)
             
-            # 3. Concatenamos y actualizamos
             df_final = pd.concat([df_previo, nueva_fila], ignore_index=True)
             conn.update(spreadsheet=url_hoja, data=df_final)
             
             st.session_state.enviado = True
             st.balloons()
-            st.toast("Datos guardados exitosamente")
+            st.toast("Datos y presupuesto guardados exitosamente")
             
         except Exception as e:
             st.error(f"Error técnico al guardar: {e}")
-
-    if st.button("Reiniciar Test"):
-        st.session_state.clear()
-        st.rerun()
