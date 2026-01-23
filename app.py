@@ -88,58 +88,67 @@ elif st.session_state.etapa == 'preguntas':
 elif st.session_state.etapa == 'resultado':
     st.success("✅ Evaluación finalizada correctamente.")
     
-    # 1. Lógica de madurez
+    # 1. Lógica de madurez y presupuesto
     si_count = sum(1 for r in st.session_state.respuestas if "SI" in str(r).upper())
     nivel = "Avanzado" if si_count > 12 else "Intermedio" if si_count > 6 else "Inicial"
     
-    # 2. Extraer presupuesto (Pregunta 16 -> Índice 15)
     try:
         dato_presupuesto = st.session_state.respuestas[15]
     except:
         dato_presupuesto = "No respondido"
 
     st.metric("Nivel de Madurez Detectado", nivel)
+    st.divider()
 
+    # 2. NUEVA CASILLA DE CONTACTO
+    st.subheader("¿Deseas profundizar en tus resultados?")
+    quiere_contacto = st.radio(
+        "¿Quieres contactar a uno de nuestros ejecutivos para recibir una asesoría personalizada?",
+        ["SÍ", "NO"],
+        index=1, # Por defecto en "NO"
+        horizontal=True
+    )
+
+    # 3. BOTÓN PARA PROCESAR ENVÍO
     if not st.session_state.enviado:
-        try:
-            conn = st.connection("gsheets", type=GSheetsConnection)
-            usuario = st.session_state.datos_usuario
-            url_hoja = st.secrets["connections"]["gsheets"]["spreadsheet"]
-            
-            # 3. Crear el DataFrame con el NUEVO registro solamente
-            nuevo_registro = pd.DataFrame([{
-                "Fecha": datetime.datetime.now().strftime("%d/%m/%Y %H:%M"),
-                "Nombre": usuario.get("Nombre", "N/A"),
-                "Cargo": usuario.get("Cargo", "N/A"),
-                "Empresa": usuario.get("Empresa", "N/A"),
-                "Email": usuario.get("Email", "N/A"),
-                "Telefono": usuario.get("Telefono", "N/A"),
-                "Resultado": nivel,
-                "Presupuesto": dato_presupuesto
-            }])
-            
-            # 4. LEER DATOS EXISTENTES (Vital para no perderlos)
+        if st.button("Finalizar y Registrar Resultados"):
             try:
-                # Intentamos leer la hoja completa
-                df_existente = conn.read(spreadsheet=url_hoja, usecols=list(range(8)))
-                # Limpiamos filas vacías que pudieran venir del Excel
-                df_existente = df_existente.dropna(how='all')
-            except:
-                # Si la hoja está vacía o es nueva, empezamos con un DF vacío
-                df_existente = pd.DataFrame(columns=nuevo_registro.columns)
-            
-            # 5. CONCATENAR (Poner el nuevo debajo de los viejos)
-            df_final = pd.concat([df_existente, nuevo_registro], ignore_index=True)
-            
-            # 6. ACTUALIZAR (Enviamos la lista completa actualizada)
-            conn.update(spreadsheet=url_hoja, data=df_final)
-            
-            st.session_state.enviado = True
-            st.balloons()
-            st.toast("✅ Registro añadido exitosamente al historial.")
-            
-        except Exception as e:
-            st.error(f"Error al actualizar el historial: {e}")
+                conn = st.connection("gsheets", type=GSheetsConnection)
+                usuario = st.session_state.datos_usuario
+                url_hoja = st.secrets["connections"]["gsheets"]["spreadsheet"]
+                
+                # Crear el registro con TODA la información
+                nuevo_registro = pd.DataFrame([{
+                    "Fecha": datetime.datetime.now().strftime("%d/%m/%Y %H:%M"),
+                    "Nombre": usuario.get("Nombre", "N/A"),
+                    "Cargo": usuario.get("Cargo", "N/A"),
+                    "Empresa": usuario.get("Empresa", "N/A"),
+                    "Email": usuario.get("Email", "N/A"),
+                    "Telefono": usuario.get("Telefono", "N/A"),
+                    "Resultado": nivel,
+                    "Presupuesto": dato_presupuesto,
+                    "Contacto_Ejecutivo": quiere_contacto # <-- Nueva columna
+                }])
+                
+                # Leer historial para hacer el Append (no pisar datos)
+                try:
+                    df_existente = conn.read(spreadsheet=url_hoja)
+                    df_existente = df_existente.dropna(how='all')
+                except:
+                    df_existente = pd.DataFrame(columns=nuevo_registro.columns)
+                
+                # Concatenar y subir
+                df_final = pd.concat([df_existente, nuevo_registro], ignore_index=True)
+                conn.update(spreadsheet=url_hoja, data=df_final)
+                
+                st.session_state.enviado = True
+                st.balloons()
+                st.success("¡Datos guardados! Si seleccionaste 'SÍ', un ejecutivo te contactará pronto.")
+                
+            except Exception as e:
+                st.error(f"Error al guardar: {e}")
+    else:
+        st.info("Tus resultados ya han sido registrados en nuestro sistema.")
 
     if st.button("Reiniciar Test"):
         st.session_state.clear()
