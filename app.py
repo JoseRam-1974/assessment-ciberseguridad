@@ -92,7 +92,7 @@ elif st.session_state.etapa == 'preguntas':
                     st.session_state.etapa = 'resultado'
                     st.rerun()
 
-# --- ETAPA 3: RESULTADOS Y GENERACIÓN DE REPORTE ---
+# --- ETAPA 3: RESULTADOS Y REPORTE TÉCNICO ---
 elif st.session_state.etapa == 'resultado':
     st.title("✅ Evaluación Finalizada")
     
@@ -105,90 +105,85 @@ elif st.session_state.etapa == 'resultado':
 
     si_c = sum(1 for r in st.session_state.respuestas_texto if "SI" in str(r).upper())
     nivel = "Avanzado" if si_c > 12 else "Intermedio" if si_c > 6 else "Inicial"
-    st.metric("Nivel de Madurez Detectado", nivel)
-
-    st.write("---")
-    st.subheader("¿Deseas profundizar en tus resultados?")
-    contacto = st.radio("¿Quieres contactar a un ejecutivo para una asesoría personalizada?", ["SÍ", "NO"], index=0)
+    st.metric("Nivel Detectado", nivel)
 
     if not st.session_state.enviado:
-        if st.button("Finalizar y Registrar Resultados"):
+        if st.button("Finalizar y Registrar"):
             try:
                 conn = st.connection("gsheets", type=GSheetsConnection)
                 url = st.secrets["connections"]["gsheets"]["spreadsheet"]
                 u = st.session_state.datos_usuario
-                
                 data = {
                     "Fecha": [datetime.datetime.now().strftime("%d/%m/%Y %H:%M")],
-                    "Nombre": [u["Nombre"]], "Cargo": [u["Cargo"]], "Empresa": [u["Empresa"]],
-                    "Email": [u["Email"]], "Telefono": [u["Telefono"]], "Resultado": [nivel],
-                    "Presupuesto": [pres_val], "Contacto": [contacto], "App": ["V-Final-Lunes"]
+                    "Nombre": [u["Nombre"]], "Empresa": [u["Empresa"]],
+                    "Email": [u["Email"]], "Resultado": [nivel],
+                    "Presupuesto": [pres_val], "App": ["V-Final-Estricta"]
                 }
                 df_nuevo = pd.DataFrame(data)
                 hist = conn.read(spreadsheet=url, ttl=0)
                 conn.update(spreadsheet=url, data=pd.concat([hist, df_nuevo], ignore_index=True))
-                
                 st.session_state.enviado = True
                 st.rerun()
             except Exception as e:
                 st.error(f"Error al guardar: {e}")
     else:
-        st.success("¡Datos registrados! Ya puede descargar su informe técnico.")
+        st.success("Resultados guardados correctamente.")
         
-        # --- LÓGICA DE PDF PULIDA (12.b, 13.b, 14.a, etc.) ---
+        # --- GENERACIÓN DEL PDF CON MATCH ESTRICTO ---
         df_rec = leer_word("02. Respuestas.docx")
         pdf = PDF()
         pdf.add_page()
         
+        # Resumen Ejecutivo
         pdf.set_font("Arial", 'B', 12)
-        pdf.cell(0, 10, "1. RESUMEN EJECUTIVO", 1, 1, 'L')
+        pdf.cell(0, 10, "1. SITUACION ACTUAL", 1, 1, 'L')
         pdf.set_font("Arial", '', 10)
         u = st.session_state.datos_usuario
         pdf.ln(2)
         pdf.cell(0, 7, clean_pdf(f"Empresa: {u['Empresa']} | Nivel: {nivel}"), 0, 1)
-        pdf.cell(0, 7, clean_pdf(f"Presupuesto: {pres_val}"), 0, 1)
         pdf.ln(5)
 
         pdf.set_font("Arial", 'B', 12)
-        pdf.cell(0, 10, "2. ANALISIS Y RECOMENDACIONES TECNICAS", 1, 1, 'L')
+        pdf.cell(0, 10, "2. PLAN DE ACCION Y RECOMENDACIONES", 1, 1, 'L')
         pdf.ln(4)
 
         for i in range(len(st.session_state.preguntas_texto)):
             preg = st.session_state.preguntas_texto[i]
             resp = st.session_state.respuestas_texto[i]
             
-            # Encabezados en el PDF
             pdf.set_font("Arial", 'B', 9)
-            pdf.set_text_color(100, 100, 100)
+            pdf.set_text_color(60, 60, 60)
             pdf.multi_cell(0, 5, clean_pdf(f"Pregunta {i+1}: {preg}"))
             
             pdf.set_font("Arial", 'B', 9)
             pdf.set_text_color(0, 0, 0)
             pdf.multi_cell(0, 5, clean_pdf(f"Hallazgo: {resp}"))
 
-            # LÓGICA DE MATCH POR ID EXACTO
-            recom_encontrada = ""
+            # LÓGICA DE MATCH ESTRICTO (Corrección Pregunta 15)
             # Separamos por si hay selección múltiple
             sub_respuestas = [sr.strip() for sr in resp.split(",")]
+            recomendaciones_encontradas = []
             
             for sr in sub_respuestas:
-                # Extraer ID (ej: "12.b")
-                match_id = re.match(r'^(\d+\.[a-z]?)', sr.lower())
+                # Extraer ID exacto (ej: "15.b")
+                # El regex busca: inicio -> número -> punto -> letra
+                match_id = re.match(r'^(\d+\.[a-z])', sr.lower())
                 if match_id:
-                    id_busqueda = match_id.group(1).strip()
+                    id_exacto = match_id.group(1).strip()
                     
                     for _, row in df_rec.iterrows():
                         clave_word = str(row['Clave']).lower().strip()
-                        # Si la clave del Word empieza exactamente con el ID de la respuesta
-                        if clave_word.startswith(id_busqueda):
-                            recom_encontrada = row['Contenido']
-                            break
-                if recom_encontrada: break
-
-            if recom_encontrada:
+                        # IMPORTANTE: Comparamos que el ID sea EXACTO al inicio de la clave
+                        # Ejemplo: si id_exacto es '15.b', no hará match con '5.b' ni con '15'
+                        if clave_word.startswith(id_exacto):
+                            if row['Contenido'] not in recomendaciones_encontradas:
+                                recomendaciones_encontradas.append(row['Contenido'])
+            
+            if recomendaciones_encontradas:
                 pdf.set_font("Arial", '', 9)
                 pdf.set_text_color(0, 51, 102)
-                pdf.multi_cell(0, 5, clean_pdf(f"RECOMENDACION: {recom_encontrada}"))
+                for rec in recomendaciones_encontradas:
+                    pdf.multi_cell(0, 5, clean_pdf(f"RECOMENDACION TECNICA: {rec}"))
             else:
                 pdf.set_font("Arial", 'I', 8)
                 pdf.set_text_color(150, 150, 150)
@@ -198,13 +193,12 @@ elif st.session_state.etapa == 'resultado':
             pdf.ln(4)
 
         st.download_button(
-            label="📥 DESCARGAR INFORME TECNICO PDF",
+            label="📥 Descargar Informe Completo (PDF)",
             data=pdf.output(dest='S').encode('latin-1', 'replace'),
-            file_name=f"Reporte_Cyber_{u['Empresa']}.pdf",
-            mime="application/pdf",
-            use_container_width=True
+            file_name=f"Informe_Ciberseguridad_{u['Empresa']}.pdf",
+            mime="application/pdf"
         )
 
-    if st.button("Reiniciar Assessment"):
+    if st.button("Reiniciar"):
         st.session_state.clear()
         st.rerun()
