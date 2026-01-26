@@ -143,7 +143,7 @@ elif st.session_state.etapa == 'resultado':
                     "Telefono": u["Telefono"],
                     "Resultado": nivel,
                     "Presupuesto": pres_val,
-                    "Contacto_Ejecutivo": opcion_contacto,
+                    "Contacto": opcion_contacto,
                     "Version": "V-Final-Integral"
                 }])
                 
@@ -233,3 +233,4 @@ elif st.session_state.etapa == 'resultado':
     if st.button("Reiniciar Evaluación"):
         st.session_state.clear()
         st.rerun()
+
