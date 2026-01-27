@@ -1,5 +1,5 @@
 import streamlit as st
-import pd
+import pandas as pd  # <--- Corregido: antes decía 'import pd'
 from docx import Document
 from fpdf import FPDF
 import re
@@ -12,7 +12,6 @@ st.markdown("""
     <style>
     .stApp { background-color: #0b111b; color: #ffffff; }
     
-    /* Contenedor del Título */
     .cyber-main-title { 
         color: #ffffff; 
         font-weight: 700; 
@@ -21,7 +20,6 @@ st.markdown("""
         margin-bottom: 30px; 
     }
 
-    /* Inputs y Labels */
     .stTextInput label, .stSelectbox label, .stMultiSelect label, .stRadio label {
         color: #ffffff !important;
         font-weight: 500 !important;
@@ -34,7 +32,7 @@ st.markdown("""
         border-radius: 4px !important;
     }
 
-    /* BOTONES */
+    /* BOTÓN INICIAR ASSESSMENT */
     div.stButton > button {
         background-color: #262730 !important;
         color: #ffffff !important;
@@ -44,10 +42,11 @@ st.markdown("""
         font-weight: 600 !important;
     }
 
-    /* Gradiente para botón Siguiente */
+    /* Gradiente para botón Siguiente (Foto image_31e9e0.png) */
     .stButton > button[kind="primary"] {
         background: linear-gradient(90deg, #00adef 0%, #0055a5 100%) !important;
         border: none !important;
+        box-shadow: 0px 4px 15px rgba(0, 173, 239, 0.3) !important;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -73,7 +72,7 @@ def clean_pdf(txt):
 
 class PDF(FPDF):
     def header(self):
-        # Intentar cargar logo en el PDF
+        # Logo en PDF
         logo = 'Logotipo-SECURESOFT-GTD-Color-Fondo-Transparente.png'
         if os.path.exists(logo):
             self.image(logo, 10, 8, 45)
@@ -82,44 +81,46 @@ class PDF(FPDF):
         self.cell(0, 10, 'ASSESSMENT DIGITAL ESTADO DE CIBERSEGURIDAD', 0, 1, 'R')
         self.ln(20)
 
-# --- 3. LÓGICA DE NAVEGACIÓN ---
+# --- 3. LÓGICA DE ESTADO ---
 if 'etapa' not in st.session_state:
     st.session_state.update({'etapa': 'registro', 'paso': 0, 'respuestas_texto': [], 'preguntas_texto': [], 'datos_usuario': {}, 'enviado': False})
 
-# --- 4. INTERFAZ DE REGISTRO ---
+# --- 4. ETAPA 1: REGISTRO CON LOGO ---
 if st.session_state.etapa == 'registro':
-    # INSERTAR LOGO PRINCIPAL
-    logo_path = 'Logotipo-SECURESOFT-GTD-Color-Fondo-Transparente.png'
-    if os.path.exists(logo_path):
-        st.image(logo_path, width=350)
+    # Intentar cargar el logo (probamos con ambos nombres posibles)
+    logo_principal = 'Logotipo-SECURESOFT-GTD-Color-Fondo-Transparente.png'
+    logo_alt = 'OG_securesoft@2x.png'
+    
+    if os.path.exists(logo_principal):
+        st.image(logo_principal, width=350)
+    elif os.path.exists(logo_alt):
+        st.image(logo_alt, width=350)
     else:
-        # Fallback por si el nombre es el otro adjunto
-        logo_path_alt = 'OG_securesoft@2x.png'
-        if os.path.exists(logo_path_alt):
-            st.image(logo_path_alt, width=350)
+        st.info("ℹ️ Asegúrate de que el archivo del logo esté en la misma carpeta que este script.")
 
     st.markdown('<p class="cyber-main-title">Assessment Digital Estado de Ciberseguridad</p>', unsafe_allow_html=True)
     
     st.write("### Datos del Responsable")
     col1, col2 = st.columns(2)
     with col1:
-        nom = st.text_input("Nombre Completo")
-        car = st.text_input("Cargo")
-        emp = st.text_input("Empresa")
+        nom = st.text_input("Nombre Completo", placeholder="Ej: Juan Pérez")
+        car = st.text_input("Cargo", placeholder="Ej: CISO")
+        emp = st.text_input("Empresa", placeholder="Ej: SecureSoft")
     with col2:
-        ema = st.text_input("Email Corporativo")
-        tel = st.text_input("Teléfono de Contacto")
-        ind = st.text_input("Industria")
+        ema = st.text_input("Email Corporativo", placeholder="correo@empresa.com")
+        tel = st.text_input("Teléfono de Contacto", placeholder="+56 9...")
+        ind = st.text_input("Industria", placeholder="Ej: Tecnología")
     
+    st.write("---")
     if st.button("INICIAR ASSESSMENT"):
         if all([nom, car, emp, ema, tel]):
             st.session_state.datos_usuario = {"Nombre": nom, "Cargo": car, "Empresa": emp, "Email": ema, "Telefono": tel, "Industria": ind}
             st.session_state.etapa = 'preguntas'
             st.rerun()
         else:
-            st.warning("Complete los datos para continuar.")
+            st.error("⚠️ Por favor, complete todos los campos obligatorios.")
 
-# --- 5. PREGUNTAS (Estilo foto 31e9e0) ---
+# --- 5. ETAPA 2: PREGUNTAS ---
 elif st.session_state.etapa == 'preguntas':
     df_p = leer_word("01. Preguntas.docx")
     if not df_p.empty:
@@ -129,9 +130,8 @@ elif st.session_state.etapa == 'preguntas':
         st.markdown(f"## {fila['Clave']}")
         opciones = [o.strip() for o in fila['Contenido'].split('\n') if o.strip()]
         
-        # Selección múltiple o única
         if "multiple" in fila['Clave'].lower():
-            ans = st.multiselect("Seleccione opciones:", opciones)
+            ans = st.multiselect("Seleccione las opciones correspondientes:", opciones)
         else:
             ans = st.radio("Seleccione una opción:", opciones, index=None)
         
@@ -145,19 +145,3 @@ elif st.session_state.etapa == 'preguntas':
                 else:
                     st.session_state.etapa = 'resultado'
                     st.rerun()
-
-# --- 6. RESULTADO Y REPORTE ---
-elif st.session_state.etapa == 'resultado':
-    st.title("✅ Evaluación Completa")
-    if st.button("GENERAR INFORME FINAL"):
-        st.session_state.enviado = True
-
-    if st.session_state.enviado:
-        # Lógica de búsqueda de recomendaciones (Prioridad combinada y sin duplicados)
-        df_res = leer_word("02. Respuestas.docx")
-        pdf = PDF()
-        pdf.add_page()
-        # ... (aquí sigue la lógica de PDF ya refinada anteriormente)
-        
-        st.success("Informe generado con éxito.")
-        st.download_button("📥 DESCARGAR REPORTE", data=pdf.output(dest='S').encode('latin-1'), file_name="Reporte_Ciberseguridad.pdf")
