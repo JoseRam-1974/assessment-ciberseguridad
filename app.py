@@ -10,48 +10,44 @@ import os
 # --- 1. CONFIGURACIÓN E IDENTIDAD VISUAL ---
 st.set_page_config(page_title="SecureSoft GTD | Assessment", page_icon="🛡️", layout="wide")
 
-# CSS para corregir visibilidad de campos, botones y etiquetas
+# CSS MEJORADO: Botón llamativo, etiquetas blancas y campos legibles
 st.markdown("""
     <style>
-    /* Fondo principal */
     .stApp { background-color: #0b111b; color: #ffffff; }
     
-    /* Header Personalizado */
-    .cyber-banner {
-        background-color: #121d2f;
-        padding: 30px;
-        border-radius: 10px;
-        border-bottom: 4px solid #00ccff;
-        margin-bottom: 25px;
-    }
-
-    /* CORRECCIÓN: Visibilidad de etiquetas de campos de texto */
+    /* Etiquetas de los campos en blanco puro para que se vean */
     .stTextInput label, .stRadio label, .stMultiSelect label {
-        color: #00ccff !important;
+        color: #ffffff !important;
         font-weight: bold !important;
-        font-size: 1rem !important;
+        font-size: 1.05rem !important;
+        margin-bottom: 5px;
     }
 
-    /* CORRECCIÓN: Input boxes legibles */
+    /* Input boxes con fondo blanco y texto negro para legibilidad */
     .stTextInput input {
         background-color: #ffffff !important;
         color: #0b111b !important;
+        border-radius: 5px !important;
     }
 
-    /* BOTONES RESALTADOS: Estilo Gtd Brillante */
+    /* BOTÓN LLAMATIVO Y LEGIBLE (Estilo Neón Gtd) */
     .stButton>button {
         width: 100%;
-        background-color: #0056b3 !important;
+        background: linear-gradient(90deg, #00ccff 0%, #0056b3 100%) !important;
         color: #ffffff !important;
-        border: 2px solid #00ccff !important;
-        font-weight: bold !important;
+        border: none !important;
+        font-weight: 900 !important;
+        font-size: 1.2rem !important;
         height: 3.5em !important;
-        text-transform: uppercase;
-        box-shadow: 0px 0px 15px rgba(0, 204, 255, 0.4);
+        border-radius: 10px !important;
+        box-shadow: 0px 4px 15px rgba(0, 204, 255, 0.6) !important;
+        text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
+        transition: all 0.3s ease;
     }
     .stButton>button:hover {
-        background-color: #00ccff !important;
-        color: #0b111b !important;
+        transform: scale(1.02);
+        box-shadow: 0px 6px 20px rgba(0, 204, 255, 0.8) !important;
+        color: #ffffff !important;
     }
 
     /* Tarjetas de preguntas */
@@ -85,11 +81,11 @@ def clean_pdf(txt):
 class PDF(FPDF):
     def header(self):
         if os.path.exists('OG_securesoft@2x.png'):
-            self.image('OG_securesoft@2x.png', 10, 8, 33)
+            self.image('OG_securesoft@2x.png', 10, 8, 35)
         self.set_font('Arial', 'B', 10)
         self.set_text_color(0, 86, 179)
-        self.cell(0, 10, 'CONFIDENTIAL ASSESSMENT REPORT', 0, 1, 'R')
-        self.ln(10)
+        self.cell(0, 10, 'INFORME TECNICO DE CIBERSEGURIDAD', 0, 1, 'R')
+        self.ln(12)
 
 # --- 3. ESTADO DE SESIÓN ---
 if 'etapa' not in st.session_state:
@@ -101,30 +97,31 @@ with st.sidebar:
         st.image('OG_securesoft@2x.png', use_container_width=True)
     st.write("---")
     if st.session_state.datos_usuario:
-        st.write(f"📌 **{st.session_state.datos_usuario['Empresa']}**")
+        st.markdown(f"📊 **Empresa:** {st.session_state.datos_usuario['Empresa']}")
 
 # --- 4. ETAPA 1: REGISTRO ---
 if st.session_state.etapa == 'registro':
-    st.markdown('<div class="cyber-banner"><h1>SECURESOFT GTD</h1><p>Assessment de Madurez y Resiliencia Digital</p></div>', unsafe_allow_html=True)
+    st.title("SECURESOFT GTD")
+    st.subheader("Datos del Responsable")
     
     with st.form("reg_form"):
-        st.subheader("Datos del Responsable")
-        c1, c2 = st.columns(2)
+        c1, col_gap, c2 = st.columns([1, 0.1, 1])
         with c1:
             nom = st.text_input("Nombre Completo")
             car = st.text_input("Cargo")
             emp = st.text_input("Empresa")
         with c2:
             ema = st.text_input("Email Corporativo")
-            tel = st.text_input("Telefono de Contacto")
+            tel = st.text_input("Teléfono de Contacto")
         
+        st.write(" ")
         if st.form_submit_button("INICIAR ASSESSMENT"):
             if all([nom, car, emp, ema, tel]):
                 st.session_state.datos_usuario = {"Nombre": nom, "Cargo": car, "Empresa": emp, "Email": ema, "Telefono": tel}
                 st.session_state.etapa = 'preguntas'
                 st.rerun()
             else:
-                st.error("Todos los campos son obligatorios.")
+                st.error("Por favor rellene todos los campos.")
 
 # --- 5. ETAPA 2: ASSESSMENT ---
 elif st.session_state.etapa == 'preguntas':
@@ -132,18 +129,15 @@ elif st.session_state.etapa == 'preguntas':
     if not df_p.empty:
         total_p = len(df_p)
         fila = df_p.iloc[st.session_state.paso]
-        
         st.progress((st.session_state.paso + 1) / total_p)
         
         with st.container(border=True):
             pregunta_t = re.sub(r'^\d+\.\s*', '', fila['Clave'])
             st.markdown(f"### {pregunta_t}")
-            
             opciones = [o.strip() for o in fila['Contenido'].split('\n') if o.strip()]
-            es_mult = any(kw in fila['Clave'].lower() for kw in ["múltiple", "multiple", "varias"])
             
-            if es_mult:
-                # CORRECCIÓN: Multiselect habilitado
+            # Detectar si es múltiple
+            if "múltiple" in fila['Clave'].lower() or "multiple" in fila['Clave'].lower():
                 ans = st.multiselect("Seleccione las opciones correspondientes:", opciones)
             else:
                 ans = st.radio("Seleccione una opción:", opciones, index=None)
@@ -163,40 +157,40 @@ elif st.session_state.etapa == 'preguntas':
 elif st.session_state.etapa == 'resultado':
     st.title("✅ Análisis Completado")
     
-    # Registro en Sheets...
-    if not st.session_state.enviado:
-        # Aquí va tu código de conexión a GSheets que ya tienes
-        st.session_state.enviado = True
-
     df_rec = leer_word("02. Respuestas.docx")
     pdf = PDF()
     pdf.add_page()
     
-    # Encabezado Reporte
-    pdf.set_font("Arial", 'B', 14)
-    pdf.cell(0, 10, clean_pdf(f"REPORTE PARA: {st.session_state.datos_usuario['Empresa']}"), 0, 1, 'L')
-    pdf.ln(5)
+    # Encabezado con datos del cliente
+    pdf.set_font("Arial", 'B', 12)
+    pdf.cell(0, 10, clean_pdf(f"REPORTE PARA: {st.session_state.datos_usuario['Empresa']}"), 0, 1)
+    pdf.set_font("Arial", '', 10)
+    pdf.cell(0, 6, clean_pdf(f"Responsable: {st.session_state.datos_usuario['Nombre']}"), 0, 1)
+    pdf.ln(10)
 
+    # REINTEGRACIÓN DE PREGUNTAS Y HALLAZGOS
     for i in range(len(st.session_state.preguntas_texto)):
         p_original = st.session_state.preguntas_texto[i]
         resp_u = st.session_state.respuestas_texto[i]
         
+        # 1. Mostrar Pregunta
         pdf.set_font("Arial", 'B', 10)
         pdf.set_text_color(50, 50, 50)
-        pdf.multi_cell(0, 6, clean_pdf(f"P{i+1}: {re.sub(r'^.*?[:)]', '', p_original).strip()}"))
+        # Limpiamos el texto para que no salga el "3.a)" al inicio si no quieres
+        texto_pregunta = re.sub(r'^.*?[:)]', '', p_original).strip()
+        pdf.multi_cell(0, 6, clean_pdf(f"Pregunta {i+1}: {texto_pregunta}"))
         
+        # 2. Mostrar Hallazgo
         pdf.set_font("Arial", 'B', 10)
         pdf.set_text_color(0, 0, 0)
         pdf.set_x(15)
-        pdf.cell(0, 6, clean_pdf(f"Hallazgo: {resp_u}"), 0, 1)
+        pdf.multi_cell(0, 6, clean_pdf(f"Hallazgo: {resp_u}"))
 
-        # LÓGICA DE RECOMENDACIÓN (Corregida)
+        # 3. Lógica de Recomendación
         recom_final = ""
-        # Extraer IDs como 3.a, 5.b de la respuesta del usuario
         ids_usuario = re.findall(r'(\d+\.[a-z])', resp_u.lower())
         
         if ids_usuario:
-            # Buscar en el dataframe de respuestas
             for id_u in ids_usuario:
                 match = df_rec[df_rec['Clave'].str.lower().str.contains(id_u, na=False)]
                 if not match.empty:
@@ -204,15 +198,16 @@ elif st.session_state.etapa == 'resultado':
                     break
 
         if recom_final:
+            pdf.ln(1)
             pdf.set_x(15)
-            pdf.set_font("Arial", '', 9)
+            pdf.set_font("Arial", 'B', 9)
             pdf.set_text_color(0, 86, 179)
-            # Dibujar recuadro de recomendación
-            pdf.multi_cell(0, 6, clean_pdf(f"RECOMENDACIÓN SECURESOFT: {recom_final}"), 1)
+            # Solo "Recomendación" como pediste
+            pdf.multi_cell(0, 6, clean_pdf(f"Recomendacion: {recom_final}"), 1)
         
         pdf.ln(5)
 
-    st.download_button(label="📥 DESCARGAR REPORTE PDF", 
+    st.download_button(label="📥 DESCARGAR REPORTE PDF FINAL", 
                        data=pdf.output(dest='S').encode('latin-1', 'replace'), 
-                       file_name=f"Assessment_SecureSoft_{st.session_state.datos_usuario['Empresa']}.pdf",
+                       file_name=f"Reporte_SecureSoft_{st.session_state.datos_usuario['Empresa']}.pdf",
                        use_container_width=True)
