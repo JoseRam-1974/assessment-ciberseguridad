@@ -121,63 +121,75 @@ if st.session_state.etapa == 'registro':
                 st.rerun()
             else: st.error("Complete todos los campos.")
 
-# --- 5. ETAPA 2: PREGUNTAS ---
+# --- 5. ETAPA 2: PREGUNTAS (CORREGIDO MULTIPLE) ---
 elif st.session_state.etapa == 'preguntas':
     df_p = leer_word("01. Preguntas.docx")
     if not df_p.empty:
         fila = df_p.iloc[st.session_state.paso]
         st.progress((st.session_state.paso + 1) / len(df_p))
-        q_label = re.sub(r'^\d+[\.\s\-)]+', '', fila['Clave']).strip()
+        
+        clave_pregunta = fila['Clave']
+        q_label = re.sub(r'^\d+[\.\s\-)]+', '', clave_pregunta).strip()
         st.markdown(f"### {q_label}")
+        
         opciones = [o.strip() for o in fila['Contenido'].split('\n') if o.strip()]
-        ans = st.radio("Seleccione:", opciones, index=None)
+        
+        # Detección de pregunta múltiple
+        es_multiple = "múltiple" in clave_pregunta.lower() or "multiple" in clave_pregunta.lower()
+        
+        if es_multiple:
+            ans = st.multiselect("Seleccione una o más opciones:", opciones)
+        else:
+            ans = st.radio("Seleccione una opción:", opciones, index=None)
         
         if st.button("CONFIRMAR Y SIGUIENTE"):
             if ans:
-                st.session_state.preguntas_texto.append(fila['Clave'])
-                st.session_state.respuestas_texto.append(ans)
+                # Guardamos como string separado por comas para el PDF
+                st.session_state.preguntas_texto.append(clave_pregunta)
+                st.session_state.respuestas_texto.append(", ".join(ans) if isinstance(ans, list) else ans)
+                
                 if st.session_state.paso < len(df_p) - 1:
                     st.session_state.paso += 1
                     st.rerun()
                 else:
                     st.session_state.etapa = 'resultado'
                     st.rerun()
+            else:
+                st.warning("Por favor, seleccione una respuesta.")
 
 # --- 6. ETAPA 3: REPORTE ---
 elif st.session_state.etapa == 'resultado':
     st.title("✅ Análisis Finalizado")
-    contacto = st.radio("¿Deseas que un consultor senior de SecureSoft GTD te contacte?", ["SÍ, agendar asesoría", "NO, solo descargar informe"], index=None)
+    contacto = st.radio("¿Deseas asesoría técnica?", ["SÍ, agendar asesoría", "NO, solo descargar informe"], index=None)
     
     if st.button("GENERAR REPORTE"):
         if contacto: st.session_state.enviado = True
         else: st.warning("Seleccione una opción de contacto.")
 
     if st.session_state.enviado:
-        # Cargar archivo de recomendaciones
         df_rec = leer_word("02. Respuestas.docx")
-        
         pdf = PDF()
         pdf.add_page()
         pdf.set_font("Arial", 'B', 14)
-        pdf.cell(0, 10, clean_pdf(f"REPORTE ESTRATEGICO: {st.session_state.datos_usuario.get('Empresa', 'Empresa')}"), 0, 1)
+        pdf.cell(0, 10, clean_pdf(f"INFORME PARA: {st.session_state.datos_usuario.get('Empresa', '')}"), 0, 1)
         pdf.ln(5)
 
         for i in range(len(st.session_state.preguntas_texto)):
             p_full = st.session_state.preguntas_texto[i]
             r_u = st.session_state.respuestas_texto[i]
             
-            # 1. Escribir Pregunta
+            # Título Pregunta
             pdf.set_font("Arial", 'B', 10)
             pdf.set_text_color(50, 50, 50)
             p_limpia = re.sub(r'^\d+[\.\s\-)]+', '', p_full).strip()
             pdf.multi_cell(0, 6, clean_pdf(f"Pregunta {i+1}: {p_limpia}"))
             
-            # 2. Escribir Respuesta del Usuario
+            # Respuesta Usuario
             pdf.set_font("Arial", '', 10)
             pdf.set_text_color(0, 0, 0)
             pdf.multi_cell(0, 6, clean_pdf(f"Hallazgo: {r_u}"))
             
-            # 3. Lógica de Recomendaciones (Basado en el ID de la respuesta, ej: '1.a')
+            # Buscar Recomendaciones para cada ID encontrado en la(s) respuesta(s)
             ids = re.findall(r'(\d+\.[a-z])', r_u.lower())
             if ids:
                 for id_u in ids:
@@ -186,10 +198,10 @@ elif st.session_state.etapa == 'resultado':
                         pdf.ln(1)
                         pdf.set_font("Arial", 'I', 9)
                         pdf.set_text_color(0, 85, 165)
-                        pdf.multi_cell(0, 6, clean_pdf(f"Recomendacion: {match.iloc[0]['Contenido']}"), 1)
+                        # Dibujamos una celda con borde para la recomendación
+                        pdf.multi_cell(0, 6, clean_pdf(f"Recomendacion ({id_u}): {match.iloc[0]['Contenido']}"), 1)
             pdf.ln(4)
 
-        # Botón de descarga con el estilo gris solicitado
         st.download_button(
             label="📥 DESCARGAR INFORME COMPLETO (PDF)",
             data=pdf.output(dest='S').encode('latin-1', 'replace'),
