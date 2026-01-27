@@ -45,7 +45,7 @@ st.markdown("""
         background-color: #1e1e26 !important;
     }
 
-    /* BOTÓN DE DESCARGA (GRIS) */
+    /* BOTÓN DE DESCARGA (GRIS CON LETRAS BLANCAS) */
     div.stDownloadButton > button {
         width: 100% !important;
         background-color: #4a4a4b !important;
@@ -54,10 +54,12 @@ st.markdown("""
         border-radius: 4px !important;
         padding: 0.6rem 1rem !important;
         text-transform: uppercase !important;
+        font-weight: bold !important;
     }
     div.stDownloadButton > button:hover {
         background-color: #333333 !important;
         border-color: #00c3ff !important;
+        color: #ffffff !important;
     }
 
     .cyber-title { color: #00adef; font-weight: 800; font-size: 2.5rem; }
@@ -114,7 +116,7 @@ if st.session_state.etapa == 'registro':
             ind = st.text_input("Industria")
         if st.form_submit_button("INICIAR ASSESSMENT"):
             if all([nom, car, emp, ema, tel]):
-                st.session_state.datos_usuario = {"Nombre": nom, "Cargo": car, "Empresa": emp, "Email": ema, "Telefono": tel}
+                st.session_state.datos_usuario = {"Nombre": nom, "Cargo": car, "Empresa": emp, "Email": ema, "Telefono": tel, "Industria": ind}
                 st.session_state.etapa = 'preguntas'
                 st.rerun()
             else: st.error("Complete todos los campos.")
@@ -144,34 +146,53 @@ elif st.session_state.etapa == 'preguntas':
 # --- 6. ETAPA 3: REPORTE ---
 elif st.session_state.etapa == 'resultado':
     st.title("✅ Análisis Finalizado")
-    contacto = st.radio("¿Deseas asesoría técnica?", ["SÍ", "NO"], index=None)
+    contacto = st.radio("¿Deseas que un consultor senior de SecureSoft GTD te contacte?", ["SÍ, agendar asesoría", "NO, solo descargar informe"], index=None)
     
     if st.button("GENERAR REPORTE"):
         if contacto: st.session_state.enviado = True
-        else: st.warning("Seleccione una opción.")
+        else: st.warning("Seleccione una opción de contacto.")
 
     if st.session_state.enviado:
+        # Cargar archivo de recomendaciones
+        df_rec = leer_word("02. Respuestas.docx")
+        
         pdf = PDF()
         pdf.add_page()
         pdf.set_font("Arial", 'B', 14)
-        pdf.cell(0, 10, clean_pdf(f"CLIENTE: {st.session_state.datos_usuario.get('Empresa', 'Empresa')}"), 0, 1)
+        pdf.cell(0, 10, clean_pdf(f"REPORTE ESTRATEGICO: {st.session_state.datos_usuario.get('Empresa', 'Empresa')}"), 0, 1)
         pdf.ln(5)
 
-        # Bucle corregido para asegurar que se escriban las preguntas
         for i in range(len(st.session_state.preguntas_texto)):
             p_full = st.session_state.preguntas_texto[i]
             r_u = st.session_state.respuestas_texto[i]
             
+            # 1. Escribir Pregunta
             pdf.set_font("Arial", 'B', 10)
-            pdf.multi_cell(0, 6, clean_pdf(f"Pregunta {i+1}: {p_full}"))
+            pdf.set_text_color(50, 50, 50)
+            p_limpia = re.sub(r'^\d+[\.\s\-)]+', '', p_full).strip()
+            pdf.multi_cell(0, 6, clean_pdf(f"Pregunta {i+1}: {p_limpia}"))
+            
+            # 2. Escribir Respuesta del Usuario
             pdf.set_font("Arial", '', 10)
             pdf.set_text_color(0, 0, 0)
-            pdf.multi_cell(0, 6, clean_pdf(f"Respuesta: {r_u}"))
-            pdf.ln(3)
+            pdf.multi_cell(0, 6, clean_pdf(f"Hallazgo: {r_u}"))
+            
+            # 3. Lógica de Recomendaciones (Basado en el ID de la respuesta, ej: '1.a')
+            ids = re.findall(r'(\d+\.[a-z])', r_u.lower())
+            if ids:
+                for id_u in ids:
+                    match = df_rec[df_rec['Clave'].str.lower().str.contains(id_u, na=False)]
+                    if not match.empty:
+                        pdf.ln(1)
+                        pdf.set_font("Arial", 'I', 9)
+                        pdf.set_text_color(0, 85, 165)
+                        pdf.multi_cell(0, 6, clean_pdf(f"Recomendacion: {match.iloc[0]['Contenido']}"), 1)
+            pdf.ln(4)
 
+        # Botón de descarga con el estilo gris solicitado
         st.download_button(
             label="📥 DESCARGAR INFORME COMPLETO (PDF)",
             data=pdf.output(dest='S').encode('latin-1', 'replace'),
-            file_name=f"Reporte_{st.session_state.datos_usuario.get('Empresa', 'Assessment')}.pdf",
+            file_name=f"Assessment_{st.session_state.datos_usuario.get('Empresa', 'Reporte')}.pdf",
             mime="application/pdf"
         )
