@@ -131,7 +131,7 @@ elif st.session_state.etapa == 'resultado':
                     "Fecha": datetime.datetime.now().strftime("%d/%m/%Y %H:%M"),
                     "Nombre": u["Nombre"], "Cargo": u["Cargo"], "Empresa": u["Empresa"],
                     "Email": u["Email"], "Telefono": u["Telefono"], "Resultado": nivel,
-                    "Presupuesto": pres_val, "Contacto_Ejecutivo": opcion_contacto,
+                    "Presupuesto": pres_val, "Contacto": opcion_contacto,
                     "Version": "V8-Final-Clean"
                 }])
                 
@@ -223,3 +223,4 @@ elif st.session_state.etapa == 'resultado':
     if st.button("Reiniciar"):
         st.session_state.clear()
         st.rerun()
+
