@@ -1,5 +1,5 @@
-streamlit
-python-docx
-fpdf
 pandas
-st-gsheets-connection
+python-docx
+fpdf2
+matplotlib
+numpy
