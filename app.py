@@ -6,30 +6,26 @@ import re
 import os
 
 # --- 1. CONFIGURACIÓN E IDENTIDAD VISUAL ---
-st.set_page_config(page_title="SecureSoft GTD | Cyber Assessment", page_icon="🛡️", layout="wide")
+st.set_page_config(page_title="SecureSoft GTD | Assessment Digital", page_icon="🛡️", layout="wide")
 
 st.markdown("""
     <style>
     .stApp { background-color: #0b111b; color: #ffffff; }
     
-    /* Contenedor del Logo y Títulos */
-    .header-container {
-        margin-bottom: 20px;
-    }
-
-    .cyber-subtitle { 
+    /* Título principal solicitado */
+    .cyber-main-title { 
         color: #ffffff; 
         font-weight: 700; 
-        font-size: 1.8rem; 
-        margin-top: 10px; 
+        font-size: 2.2rem; 
+        margin-top: 5px; 
         margin-bottom: 30px; 
     }
 
-    /* Estilo de etiquetas y campos de entrada */
+    /* Estilo de etiquetas de campos */
     .stTextInput label, .stSelectbox label, .stMultiSelect label, .stRadio label {
         color: #ffffff !important;
         font-weight: 500 !important;
-        font-size: 1rem !important;
+        font-size: 1.1rem !important;
     }
     
     .stTextInput input {
@@ -40,33 +36,35 @@ st.markdown("""
         height: 45px !important;
     }
 
-    /* BOTÓN INICIAR ASSESSMENT (Gris Oscuro profesional) */
+    /* BOTÓN INICIAR ASSESSMENT (Visible y Estilizado) */
     div.stButton > button {
         background-color: #262730 !important;
         color: #ffffff !important;
         border: 1px solid #4a4a4b !important;
         border-radius: 4px !important;
-        padding: 0.75rem 2rem !important;
+        padding: 0.8rem 2.5rem !important;
         text-transform: uppercase !important;
         font-weight: 600 !important;
         transition: all 0.3s ease !important;
-        width: auto !important;
-        min-width: 200px;
+        margin-top: 20px;
     }
     div.stButton > button:hover {
         border-color: #00c3ff !important;
         color: #00c3ff !important;
+        background-color: #1e1e26 !important;
     }
 
-    /* BOTÓN DE DESCARGA (GRIS CON LETRAS BLANCAS) */
+    /* BOTÓN CONFIRMAR Y SIGUIENTE (Gradiente Azul de la foto) */
+    .stButton > button[kind="primary"] {
+        background: linear-gradient(90deg, #00adef 0%, #0055a5 100%) !important;
+        border: none !important;
+    }
+
+    /* BOTÓN DE DESCARGA (GRIS) */
     div.stDownloadButton > button {
         background-color: #4a4a4b !important;
         color: #ffffff !important;
         border: 1px solid #666666 !important;
-        border-radius: 4px !important;
-        padding: 0.75rem 2rem !important;
-        text-transform: uppercase !important;
-        font-weight: bold !important;
         width: 100% !important;
     }
     </style>
@@ -93,45 +91,45 @@ def clean_pdf(txt):
 
 class PDF(FPDF):
     def header(self):
-        if os.path.exists('OG_securesoft@2x.png'):
-            self.image('OG_securesoft@2x.png', 10, 8, 33)
+        logo_path = 'Logotipo-SECURESOFT-GTD-Color-Fondo-Transparente.png'
+        if os.path.exists(logo_path):
+            self.image(logo_path, 10, 8, 40)
         self.set_font('Arial', 'B', 10)
         self.set_text_color(0, 85, 165)
-        self.cell(0, 10, 'INFORME DE MADUREZ DIGITAL', 0, 1, 'R')
+        self.cell(0, 10, 'ASSESSMENT DIGITAL ESTADO DE CIBERSEGURIDAD', 0, 1, 'R')
         self.ln(15)
 
-# --- 3. GESTIÓN DE ESTADOS ---
+# --- 3. ESTADOS ---
 if 'etapa' not in st.session_state:
     st.session_state.update({'etapa': 'registro', 'paso': 0, 'respuestas_texto': [], 'preguntas_texto': [], 'datos_usuario': {}, 'enviado': False})
 
 # --- 4. ETAPA 1: REGISTRO ---
 if st.session_state.etapa == 'registro':
-    # Logo reemplaza la leyenda de texto
-    if os.path.exists('OG_securesoft@2x.png'):
-        st.image('OG_securesoft@2x.png', width=280)
+    # Integración del Logotipo Transparente
+    logo_file = 'Logotipo-SECURESOFT-GTD-Color-Fondo-Transparente.png'
+    if os.path.exists(logo_file):
+        st.image(logo_file, width=320)
     
-    st.markdown('<p class="cyber-subtitle">Assessment de Madurez y Resiliencia Digital</p>', unsafe_allow_html=True)
+    st.markdown('<p class="cyber-main-title">Assessment Digital Estado de Ciberseguridad</p>', unsafe_allow_html=True)
     
     st.write("### Datos del Responsable")
     c1, c2 = st.columns(2)
     with c1:
         nom = st.text_input("Nombre Completo", placeholder="Ej: Juan Pérez")
-        car = st.text_input("Cargo", placeholder="Ej: Gerente TI")
-        emp = st.text_input("Empresa", placeholder="Ej: Empresa S.A.")
+        car = st.text_input("Cargo", placeholder="Ej: Director CISO")
+        emp = st.text_input("Empresa", placeholder="Ej: Corporación GTD")
     with c2:
-        ema = st.text_input("Email Corporativo", placeholder="ejemplo@empresa.com")
+        ema = st.text_input("Email Corporativo", placeholder="usuario@empresa.com")
         tel = st.text_input("Teléfono de Contacto", placeholder="+56 9 ...")
-        ind = st.text_input("Industria", placeholder="Ej: Banca / Retail")
+        ind = st.text_input("Industria", placeholder="Ej: Telecomunicaciones")
     
-    st.write("---")
-    # Botón Iniciar Assessment visible y alineado
     if st.button("INICIAR ASSESSMENT"):
         if all([nom, car, emp, ema, tel]):
             st.session_state.datos_usuario = {"Nombre": nom, "Cargo": car, "Empresa": emp, "Email": ema, "Telefono": tel, "Industria": ind}
             st.session_state.etapa = 'preguntas'
             st.rerun()
         else:
-            st.error("Por favor, complete los campos obligatorios.")
+            st.error("⚠️ Por favor completa los campos para iniciar el análisis.")
 
 # --- 5. ETAPA 2: PREGUNTAS ---
 elif st.session_state.etapa == 'preguntas':
@@ -152,7 +150,8 @@ elif st.session_state.etapa == 'preguntas':
         else:
             ans = st.radio("Seleccione una opción:", opciones, index=None)
         
-        if st.button("CONFIRMAR Y SIGUIENTE"):
+        # Botón con estilo resaltado para navegación
+        if st.button("CONFIRMAR Y SIGUIENTE", type="primary"):
             if ans:
                 st.session_state.preguntas_texto.append(clave_q)
                 st.session_state.respuestas_texto.append(", ".join(ans) if isinstance(ans, list) else ans)
@@ -165,8 +164,8 @@ elif st.session_state.etapa == 'preguntas':
 
 # --- 6. ETAPA 3: REPORTE ---
 elif st.session_state.etapa == 'resultado':
-    st.title("✅ Evaluación Finalizada")
-    if st.button("GENERAR REPORTE FINAL"):
+    st.title("✅ Análisis Completado")
+    if st.button("GENERAR REPORTE PDF"):
         st.session_state.enviado = True
 
     if st.session_state.enviado:
@@ -174,27 +173,25 @@ elif st.session_state.etapa == 'resultado':
         pdf = PDF()
         pdf.add_page()
         pdf.set_font("Arial", 'B', 14)
-        pdf.cell(0, 10, clean_pdf(f"REPORTE ESTRATÉGICO: {st.session_state.datos_usuario['Empresa']}"), 0, 1)
+        pdf.cell(0, 10, clean_pdf(f"REPORTE: {st.session_state.datos_usuario['Empresa']}"), 0, 1)
         pdf.ln(5)
 
         for i in range(len(st.session_state.preguntas_texto)):
             p_full = st.session_state.preguntas_texto[i]
             r_u = st.session_state.respuestas_texto[i]
             
-            pdf.set_font("Arial", 'B', 10)
-            pdf.set_text_color(50, 50, 50)
+            pdf.set_font("Arial", 'B', 10); pdf.set_text_color(50, 50, 50)
             pdf.multi_cell(0, 6, clean_pdf(f"Pregunta {i+1}: {p_full}"))
-            pdf.set_font("Arial", '', 10)
-            pdf.set_text_color(0, 0, 0)
+            pdf.set_font("Arial", '', 10); pdf.set_text_color(0, 0, 0)
             pdf.multi_cell(0, 6, clean_pdf(f"Hallazgo: {r_u}"))
             
-            # Lógica de Recomendaciones (Prioriza combinadas y elimina duplicados textuales)
+            # Lógica Anti-Duplicados y Prioridad Combinada
             ids = sorted(list(set(re.findall(r'(\d+\.[a-z])', r_u.lower()))))
             mostrados = set()
 
             if ids:
-                combinacion = " y ".join(ids)
-                m_comb = df_rec[df_rec['Clave'].str.lower().str.contains(combinacion, na=False)]
+                comb = " y ".join(ids)
+                m_comb = df_rec[df_rec['Clave'].str.lower().str.contains(comb, na=False)]
                 if not m_comb.empty:
                     txt = m_comb.iloc[0]['Contenido'].strip()
                     pdf.ln(1); pdf.set_font("Arial", 'I', 9); pdf.set_text_color(0, 85, 165)
@@ -212,7 +209,7 @@ elif st.session_state.etapa == 'resultado':
             pdf.ln(4)
 
         st.download_button(
-            label="📥 DESCARGAR INFORME EN PDF",
+            label="📥 DESCARGAR INFORME DE CIBERSEGURIDAD",
             data=pdf.output(dest='S').encode('latin-1', 'replace'),
             file_name=f"Assessment_{st.session_state.datos_usuario['Empresa']}.pdf",
             mime="application/pdf"
