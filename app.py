@@ -10,27 +10,26 @@ import os
 # --- 1. CONFIGURACIÓN E IDENTIDAD VISUAL ---
 st.set_page_config(page_title="SecureSoft GTD | Cyber Assessment", page_icon="🛡️", layout="wide")
 
-# CSS Actualizado
+# CSS UNIFICADO Y ACTUALIZADO
 st.markdown("""
     <style>
     .stApp { background-color: #0b111b; color: #ffffff; }
     
-    /* Etiquetas de campos */
+    /* Etiquetas de campos: Blanco puro */
     .stTextInput label, .stRadio label, .stMultiSelect label, .stSelectbox label {
         color: #ffffff !important;
         font-weight: bold !important;
         font-size: 1.1rem !important;
     }
 
-    /* Inputs */
+    /* Inputs: Fondo blanco y texto negro */
     .stTextInput input {
         background-color: #ffffff !important;
         color: #0b111b !important;
         border-radius: 5px !important;
     }
 
-    /* --- ESTILO DEL BOTÓN SOLICITADO (Gris Oscuro / Profesional) --- */
-    /* Se aplica a los botones de formulario y botones normales */
+    /* --- ESTILO BOTONES GENERALES (INICIAR, CONFIRMAR) --- */
     div.stButton > button {
         width: 100%;
         background-color: #262730 !important;
@@ -44,7 +43,6 @@ st.markdown("""
         letter-spacing: 1px !important;
         transition: all 0.3s ease !important;
     }
-
     div.stButton > button:hover {
         border-color: #00c3ff !important;
         color: #00c3ff !important;
@@ -52,8 +50,24 @@ st.markdown("""
         box-shadow: 0px 4px 15px rgba(0, 195, 255, 0.2) !important;
     }
 
-    /* Mantener estilo degradado SOLO para botones de 'Finalizar' o 'Siguiente' si lo deseas, 
-       o dejar todos con el nuevo estilo gris. Aquí lo aplicamos a todos por consistencia. */
+    /* --- ESTILO ESPECÍFICO BOTÓN DE DESCARGA (GRIS Y LETRAS BLANCAS) --- */
+    div.stDownloadButton > button {
+        width: 100% !important;
+        background-color: #4a4a4b !important; /* Gris */
+        color: #ffffff !important;           /* Letras blancas */
+        border: 1px solid #666666 !important;
+        border-radius: 4px !important;
+        padding: 0.6rem 1rem !important;
+        font-size: 14px !important;
+        font-weight: 600 !important;
+        text-transform: uppercase !important;
+        transition: all 0.3s ease !important;
+    }
+    div.stDownloadButton > button:hover {
+        background-color: #333333 !important;
+        color: #ffffff !important;
+        border-color: #00c3ff !important;
+    }
 
     .cyber-title {
         color: #00adef;
@@ -106,30 +120,26 @@ if st.session_state.etapa == 'registro':
     st.markdown('<p class="cyber-title">SECURESOFT GTD</p>', unsafe_allow_html=True)
     st.subheader("Assessment de Madurez y Resiliencia Digital")
     
-    with st.container(border=True):
+    with st.form("reg_form"):
         st.write("### Datos del Responsable")
-        with st.form("reg_form"):
-            c1, c2 = st.columns(2)
-            with c1:
-                nom = st.text_input("Nombre Completo")
-                car = st.text_input("Cargo")
-                emp = st.text_input("Empresa")
-            with c2:
-                ema = st.text_input("Email Corporativo")
-                tel = st.text_input("Telefono de Contacto")
-                ind = st.text_input("Industria")
-            
-            st.write(" ")
-            # El botón hereda el nuevo estilo gris oscuro
-            submit = st.form_submit_button("INICIAR ASSESSMENT")
-            
-            if submit:
-                if all([nom, car, emp, ema, tel]):
-                    st.session_state.datos_usuario = {"Nombre": nom, "Cargo": car, "Empresa": emp, "Email": ema, "Telefono": tel}
-                    st.session_state.etapa = 'preguntas'
-                    st.rerun()
-                else:
-                    st.error("Por favor rellene todos los campos obligatorios.")
+        c1, c2 = st.columns(2)
+        with c1:
+            nom = st.text_input("Nombre Completo")
+            car = st.text_input("Cargo")
+            emp = st.text_input("Empresa")
+        with c2:
+            ema = st.text_input("Email Corporativo")
+            tel = st.text_input("Telefono de Contacto")
+            ind = st.text_input("Industria")
+        
+        st.write(" ")
+        if st.form_submit_button("INICIAR ASSESSMENT"):
+            if all([nom, car, emp, ema, tel]):
+                st.session_state.datos_usuario = {"Nombre": nom, "Cargo": car, "Empresa": emp, "Email": ema, "Telefono": tel}
+                st.session_state.etapa = 'preguntas'
+                st.rerun()
+            else:
+                st.error("Por favor rellene todos los campos obligatorios.")
 
 # --- 5. ETAPA 2: PREGUNTAS ---
 elif st.session_state.etapa == 'preguntas':
@@ -144,7 +154,7 @@ elif st.session_state.etapa == 'preguntas':
         opciones = [o.strip() for o in fila['Contenido'].split('\n') if o.strip()]
         
         if "múltiple" in fila['Clave'].lower() or "multiple" in fila['Clave'].lower():
-            ans = st.multiselect("Seleccione las opciones correspondientes:", opciones)
+            ans = st.multiselect("Seleccione las opciones:", opciones)
         else:
             ans = st.radio("Seleccione una opción:", opciones, index=None)
 
@@ -165,7 +175,7 @@ elif st.session_state.etapa == 'resultado':
     
     with st.container(border=True):
         st.subheader("Consultoría Estratégica")
-        contacto = st.radio("¿Deseas que un consultor senior de SecureSoft GTD te contacte para analizar estos resultados?", 
+        contacto = st.radio("¿Deseas que un consultor senior te contacte?", 
                             ["SÍ, agendar asesoría técnica", "NO, por ahora solo descargar informe"], index=None)
 
     if not st.session_state.enviado:
@@ -174,43 +184,27 @@ elif st.session_state.etapa == 'resultado':
                 st.session_state.enviado = True
                 st.rerun()
             else:
-                st.warning("Selecciona una opción de contacto para proceder.")
+                st.warning("Selecciona una opción de contacto.")
     else:
+        # Lógica de PDF
         df_rec = leer_word("02. Respuestas.docx")
         pdf = PDF()
         pdf.add_page()
         pdf.set_font("Arial", 'B', 12)
         pdf.cell(0, 10, clean_pdf(f"REPORTE PARA: {st.session_state.datos_usuario['Empresa']}"), 0, 1)
-        pdf.ln(5)
-
+        
         for i in range(len(st.session_state.preguntas_texto)):
-            p_full = st.session_state.preguntas_texto[i]
-            resp_u = st.session_state.respuestas_texto[i]
-            p_limpia_pdf = re.sub(r'^\d+[\.\s\-)]+', '', p_full).strip()
-            
+            p_limpia = re.sub(r'^\d+[\.\s\-)]+', '', st.session_state.preguntas_texto[i]).strip()
             pdf.set_font("Arial", 'B', 10)
-            pdf.set_text_color(50, 50, 50)
-            pdf.multi_cell(0, 6, clean_pdf(f"Pregunta {i+1}: {p_limpia_pdf}"))
-            
+            pdf.multi_cell(0, 6, clean_pdf(f"Pregunta {i+1}: {p_limpia}"))
             pdf.set_font("Arial", '', 10)
-            pdf.set_text_color(0, 0, 0)
-            pdf.multi_cell(0, 6, clean_pdf(f"Hallazgo: {resp_u}"))
+            pdf.multi_cell(0, 6, clean_pdf(f"Hallazgo: {st.session_state.respuestas_texto[i]}"))
+            pdf.ln(2)
 
-            ids = re.findall(r'(\d+\.[a-z])', resp_u.lower())
-            if ids:
-                for id_u in ids:
-                    match = df_rec[df_rec['Clave'].str.lower().str.contains(id_u, na=False)]
-                    if not match.empty:
-                        pdf.ln(1)
-                        pdf.set_font("Arial", 'I', 9)
-                        pdf.set_text_color(0, 85, 165)
-                        pdf.multi_cell(0, 6, clean_pdf(f"Recomendacion: {match.iloc[0]['Contenido']}"), 1)
-            pdf.ln(4)
-
+        # BOTÓN DE DESCARGA CON ESTILO GRIS
         st.download_button(
             label="📥 DESCARGAR INFORME COMPLETO (PDF)",
             data=pdf.output(dest='S').encode('latin-1', 'replace'),
             file_name=f"Assessment_{st.session_state.datos_usuario['Empresa']}.pdf",
-            mime="application/pdf",
-            use_container_width=True
+            mime="application/pdf"
         )
