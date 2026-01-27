@@ -1,22 +1,74 @@
 import streamlit as st
 import pandas as pd
-import matplotlib.pyplot as plt
-import numpy as np
 from docx import Document
 from fpdf import FPDF
 import re
 import os
 
-# --- 1. CONFIGURACIÓN VISUAL ---
-st.set_page_config(page_title="SecureSoft GTD | Assessment", page_icon="🛡️", layout="wide")
+# --- 1. CONFIGURACIÓN E IDENTIDAD VISUAL ---
+st.set_page_config(page_title="SecureSoft GTD | Assessment Digital", page_icon="🛡️", layout="wide")
 
 st.markdown("""
     <style>
     .stApp { background-color: #0b111b; color: #ffffff; }
-    .title-cyber { color: #00adef; font-weight: bold; font-size: 1.6rem; margin-bottom: 20px; }
-    /* Texto blanco para las opciones del radio button */
-    div[role="radiogroup"] label p { color: #ffffff !important; font-size: 1.1rem !important; }
-    .stButton > button[kind="primary"] { background: linear-gradient(90deg, #00adef 0%, #0055a5 100%) !important; border: none !important; }
+    
+    .cyber-main-title { 
+        color: #ffffff; 
+        font-weight: 700; 
+        font-size: 2.2rem; 
+        margin-bottom: 30px; 
+    }
+
+    /* VISIBILIDAD DE OPCIONES: TEXTO EN BLANCO */
+    div[data-testid="stMarkdownContainer"] p, 
+    div[role="radiogroup"] label p, 
+    div[data-testid="stMultiSelect"] label p {
+        color: #ffffff !important;
+        font-size: 1.1rem !important;
+    }
+
+    /* PREGUNTAS EN CELESTE BRILLANTE */
+    label[data-testid="stWidgetLabel"] p {
+        color: #00adef !important;
+        font-weight: bold !important;
+        font-size: 1.2rem !important;
+    }
+
+    .stTextInput input {
+        background-color: #ffffff !important;
+        color: #0b111b !important;
+        border-radius: 4px !important;
+    }
+
+    div.stButton > button {
+        background-color: #262730 !important;
+        color: #ffffff !important;
+        border: 1px solid #4a4a4b !important;
+        padding: 0.8rem 2.5rem !important;
+        text-transform: uppercase !important;
+    }
+
+    .stButton > button[kind="primary"] {
+        background: linear-gradient(90deg, #00adef 0%, #0055a5 100%) !important;
+        border: none !important;
+    }
+
+    div.stDownloadButton > button {
+        background: linear-gradient(90deg, #28a745 0%, #1e7e34 100%) !important;
+        color: #ffffff !important;
+        border: none !important;
+        width: 100% !important;
+        font-weight: bold !important;
+        padding: 1rem !important;
+    }
+    
+    .thank-you-box {
+        background-color: #161f2d;
+        padding: 2rem;
+        border-radius: 10px;
+        border-left: 5px solid #00adef;
+        margin-bottom: 2rem;
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -39,94 +91,131 @@ def clean_pdf(txt):
     for a, b in rep.items(): t = t.replace(a, b)
     return t.encode('latin-1', 'ignore').decode('latin-1')
 
-# --- 3. ESTADOS DE SESIÓN ---
+class PDF(FPDF):
+    def header(self):
+        logo = 'Logotipo-SECURESOFT-GTD-Color-Fondo-Transparente.png'
+        if os.path.exists(logo):
+            self.image(logo, 10, 8, 45)
+        self.set_font('Arial', 'B', 10)
+        self.set_text_color(0, 85, 165)
+        self.cell(0, 10, 'ASSESSMENT DIGITAL ESTADO DE CIBERSEGURIDAD', 0, 1, 'R')
+        self.ln(20)
+
+# --- 3. GESTIÓN DE ESTADOS ---
 if 'etapa' not in st.session_state:
     st.session_state.update({'etapa': 'registro', 'paso': 0, 'respuestas_texto': [], 'preguntas_texto': [], 'datos_usuario': {}})
 
-# --- 4. FLUJO DE LA APP ---
+# --- 4. ETAPA 1: REGISTRO ---
 if st.session_state.etapa == 'registro':
-    st.markdown('<p class="title-cyber">Assessment Digital de Ciberseguridad</p>', unsafe_allow_html=True)
-    nom = st.text_input("Nombre Completo")
-    emp = st.text_input("Empresa")
-    if st.button("INICIAR", type="primary"):
-        if nom and emp:
-            st.session_state.datos_usuario = {"Nombre": nom, "Empresa": emp}
+    logo_path = 'Logotipo-SECURESOFT-GTD-Color-Fondo-Transparente.png'
+    if os.path.exists(logo_path): st.image(logo_path, width=350)
+    
+    st.markdown('<p class="cyber-main-title">Assessment Digital Estado de Ciberseguridad</p>', unsafe_allow_html=True)
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        nom = st.text_input("Nombre Completo")
+        car = st.text_input("Cargo")
+        emp = st.text_input("Empresa")
+    with col2:
+        ema = st.text_input("Email Corporativo")
+        tel = st.text_input("Teléfono de Contacto")
+        ind = st.text_input("Industria")
+    
+    if st.button("INICIAR ASSESSMENT"):
+        if all([nom, car, emp, ema, tel]):
+            st.session_state.datos_usuario = {"Nombre": nom, "Cargo": car, "Empresa": emp, "Email": ema, "Telefono": tel, "Industria": ind}
             st.session_state.etapa = 'preguntas'
             st.rerun()
+        else:
+            st.error("Por favor, complete los campos obligatorios.")
 
+# --- 5. ETAPA 2: PREGUNTAS ---
 elif st.session_state.etapa == 'preguntas':
     df_p = leer_word("01. Preguntas.docx")
     if not df_p.empty:
         fila = df_p.iloc[st.session_state.paso]
+        st.progress((st.session_state.paso + 1) / len(df_p))
+        
         st.write(f"### {fila['Clave']}")
         opciones = [o.strip() for o in fila['Contenido'].split('\n') if o.strip()]
-        ans = st.radio("Seleccione una opción:", opciones, index=None, key=f"p_{st.session_state.paso}")
+        es_multiple = any(x in fila['Clave'].lower() for x in ["multiple", "múltiple"])
         
-        if st.button("SIGUIENTE", type="primary") and ans:
-            st.session_state.preguntas_texto.append(fila['Clave'])
-            st.session_state.respuestas_texto.append(ans)
-            if st.session_state.paso < len(df_p) - 1:
-                st.session_state.paso += 1
-                st.rerun()
-            else:
-                st.session_state.etapa = 'resultado'
-                st.rerun()
+        if es_multiple:
+            ans = st.multiselect("Seleccione las opciones:", opciones, key=f"q_{st.session_state.paso}")
+        else:
+            ans = st.radio("Seleccione una opción:", opciones, index=None, key=f"q_{st.session_state.paso}")
+        
+        if st.button("CONFIRMAR Y SIGUIENTE", type="primary"):
+            if ans:
+                st.session_state.preguntas_texto.append(fila['Clave'])
+                st.session_state.respuestas_texto.append(", ".join(ans) if isinstance(ans, list) else ans)
+                if st.session_state.paso < len(df_p) - 1:
+                    st.session_state.paso += 1
+                    st.rerun()
+                else:
+                    st.session_state.etapa = 'resultado'
+                    st.rerun()
 
+# --- 6. ETAPA 3: REPORTE Y DESCARGA REAL ---
 elif st.session_state.etapa == 'resultado':
-    st.markdown('<p class="title-cyber">✅ Evaluación Finalizada</p>', unsafe_allow_html=True)
+    st.markdown('<p class="cyber-main-title">✅ Evaluación Finalizada</p>', unsafe_allow_html=True)
     
-    # Solución visual para la imagen que enviaste
-    opcion = st.radio("Para una interpretación más profunda de estos resultados:", [
-        "Deseo una sesión de consultoría gratuita para revisar mi reporte con un experto de SecureSoft.",
-        "Solo deseo descargar el informe por el momento."
-    ], index=None)
+    st.markdown(f"""
+    <div class="thank-you-box">
+        <h3>¡Gracias, {st.session_state.datos_usuario['Nombre']}!</h3>
+        <p>El reporte para <b>{st.session_state.datos_usuario['Empresa']}</b> ya puede ser generado.</p>
+    </div>
+    """, unsafe_allow_html=True)
 
-    if st.button("GENERAR REPORTE PDF", type="primary") and opcion:
-        # Generar gráfico de radar (Simulado)
-        pilares = ["Identificar", "Proteger", "Detectar", "Responder", "Recuperar"]
-        valores = [80, 70, 65, 90, 75]
-        angles = np.linspace(0, 2*np.pi, len(pilares), endpoint=False).tolist()
-        fig, ax = plt.subplots(figsize=(6, 6), subplot_kw=dict(polar=True))
-        ax.fill(angles + [angles[0]], valores + [valores[0]], color='#00adef', alpha=0.3)
-        plt.savefig("radar.png")
-        
-        # Crear PDF
-        pdf = FPDF()
-        pdf.set_auto_page_break(auto=True, margin=15)
-        pdf.add_page()
-        
-        # Título
-        pdf.set_font("Arial", 'B', 16)
-        pdf.cell(190, 10, clean_pdf(f"REPORTE: {st.session_state.datos_usuario['Empresa']}"), 0, 1, 'C')
-        
-        # Imagen con margen seguro
-        pdf.image("radar.png", x=55, y=30, w=100)
-        pdf.set_y(130) # Baja el cursor debajo de la imagen para evitar el error de espacio
-        
-        df_rec = leer_word("02. Respuestas.docx")
-        for i in range(len(st.session_state.preguntas_texto)):
-            # USAR 190 SIEMPRE PARA EVITAR EL ERROR DE ESPACIO HORIZONTAL
-            pdf.set_font("Arial", 'B', 10)
-            pdf.multi_cell(190, 7, clean_pdf(f"P{i+1}: {st.session_state.preguntas_texto[i]}"))
-            
-            pdf.set_font("Arial", '', 10)
-            pdf.multi_cell(190, 7, clean_pdf(f"Resultado: {st.session_state.respuestas_texto[i]}"))
-            
-            # Buscar recomendación
-            ids = re.findall(r'(\d+\.[a-z])', st.session_state.respuestas_texto[i].lower())
-            for id_r in ids:
-                rec = df_rec[df_rec['Clave'].str.lower() == id_r]
-                if not rec.empty:
-                    pdf.set_font("Arial", 'I', 9)
-                    pdf.multi_cell(180, 6, clean_pdf(f"Recomendacion: {rec.iloc[0]['Contenido']}"), border=1)
-            pdf.ln(3)
+    opcion_contacto = st.radio(
+        "¿Cómo desea recibir su informe estratégico?",
+        [
+            "Deseo una sesión de consultoría gratuita para revisar el reporte con un experto.",
+            "Solo deseo descargar el informe en PDF por ahora."
+        ],
+        index=None
+    )
 
-        # SALIDA DEL PDF (Solución al AttributeError)
-        pdf_bytes = pdf.output() # fpdf2 devuelve bytes por defecto
-        
-        st.download_button(
-            label="📥 DESCARGAR REPORTE",
-            data=pdf_bytes,
-            file_name=f"Reporte_{st.session_state.datos_usuario['Empresa']}.pdf",
-            mime="application/pdf"
-        )
+    if st.button("GENERAR REPORTE PDF", type="primary"):
+        if opcion_contacto:
+            # --- GENERACIÓN REAL DEL PDF ---
+            df_rec = leer_word("02. Respuestas.docx")
+            pdf = PDF()
+            pdf.add_page()
+            pdf.set_font("Arial", 'B', 14)
+            pdf.cell(0, 10, clean_pdf(f"REPORTE DE CIBERSEGURIDAD: {st.session_state.datos_usuario['Empresa']}"), 0, 1)
+            pdf.ln(5)
+
+            for i in range(len(st.session_state.preguntas_texto)):
+                p_text = st.session_state.preguntas_texto[i]
+                r_text = st.session_state.respuestas_texto[i]
+                
+                # Pregunta
+                pdf.set_font("Arial", 'B', 10); pdf.set_text_color(50, 50, 50)
+                pdf.multi_cell(0, 6, clean_pdf(f"Pregunta {i+1}: {p_text}"))
+                
+                # Respuesta del usuario
+                pdf.set_font("Arial", '', 10); pdf.set_text_color(0, 0, 0)
+                pdf.multi_cell(0, 6, clean_pdf(f"Resultado: {r_text}"))
+                
+                # Buscar recomendación en el Word de respuestas
+                ids = sorted(list(set(re.findall(r'(\d+\.[a-z])', r_text.lower()))))
+                for id_s in ids:
+                    m_s = df_rec[df_rec['Clave'].str.lower() == id_s]
+                    if not m_s.empty:
+                        txt_s = m_s.iloc[0]['Contenido'].strip()
+                        pdf.ln(1); pdf.set_font("Arial", 'I', 9); pdf.set_text_color(0, 85, 165)
+                        pdf.multi_cell(0, 6, clean_pdf(f"Recomendacion ({id_s}): {txt_s}"), 1)
+                pdf.ln(4)
+
+            # Botón de descarga con los datos reales
+            st.success("✅ Informe generado exitosamente.")
+            st.download_button(
+                label="📥 CLIC AQUÍ PARA DESCARGAR EL REPORTE",
+                data=pdf.output(dest='S').encode('latin-1', 'replace'),
+                file_name=f"Reporte_Cyber_{st.session_state.datos_usuario['Empresa']}.pdf",
+                mime="application/pdf"
+            )
+        else:
+            st.warning("Seleccione una opción de contacto para habilitar la descarga.")
