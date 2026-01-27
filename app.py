@@ -1,5 +1,5 @@
 import streamlit as st
-import pandas as pd  # <--- Corregido: antes decía 'import pd'
+import pandas as pd
 from docx import Document
 from fpdf import FPDF
 import re
@@ -32,7 +32,7 @@ st.markdown("""
         border-radius: 4px !important;
     }
 
-    /* BOTÓN INICIAR ASSESSMENT */
+    /* BOTONES GENERALES */
     div.stButton > button {
         background-color: #262730 !important;
         color: #ffffff !important;
@@ -42,16 +42,24 @@ st.markdown("""
         font-weight: 600 !important;
     }
 
-    /* Gradiente para botón Siguiente (Foto image_31e9e0.png) */
+    /* Gradiente para botón Siguiente (Como en la foto) */
     .stButton > button[kind="primary"] {
         background: linear-gradient(90deg, #00adef 0%, #0055a5 100%) !important;
         border: none !important;
         box-shadow: 0px 4px 15px rgba(0, 173, 239, 0.3) !important;
     }
+
+    /* BOTÓN DE DESCARGA (GRIS) */
+    div.stDownloadButton > button {
+        background-color: #4a4a4b !important;
+        color: #ffffff !important;
+        border: 1px solid #666666 !important;
+        width: 100% !important;
+    }
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. FUNCIONES ---
+# --- 2. FUNCIONES TÉCNICAS ---
 def leer_word(ruta):
     try:
         doc = Document(ruta)
@@ -65,14 +73,13 @@ def leer_word(ruta):
 
 def clean_pdf(txt):
     if not txt: return ""
-    rep = {"á":"a","é":"e","í":"i","ó":"o","ú":"u","ñ":"n","Á":"A","É":"E","Í":"I","Ó":"O","Ú":"U","Ñ":"N"}
+    rep = {"á":"a","é":"e","í":"i","ó":"o","ú":"u","ñ":"n","Á":"A","É":"E","Í":"I","Ó":"O","Ú":"U","Ñ":"N","¿":"","¡":""}
     t = str(txt)
     for a, b in rep.items(): t = t.replace(a, b)
     return t.encode('latin-1', 'ignore').decode('latin-1')
 
 class PDF(FPDF):
     def header(self):
-        # Logo en PDF
         logo = 'Logotipo-SECURESOFT-GTD-Color-Fondo-Transparente.png'
         if os.path.exists(logo):
             self.image(logo, 10, 8, 45)
@@ -81,67 +88,132 @@ class PDF(FPDF):
         self.cell(0, 10, 'ASSESSMENT DIGITAL ESTADO DE CIBERSEGURIDAD', 0, 1, 'R')
         self.ln(20)
 
-# --- 3. LÓGICA DE ESTADO ---
+# --- 3. GESTIÓN DE ESTADOS ---
 if 'etapa' not in st.session_state:
-    st.session_state.update({'etapa': 'registro', 'paso': 0, 'respuestas_texto': [], 'preguntas_texto': [], 'datos_usuario': {}, 'enviado': False})
+    st.session_state.update({
+        'etapa': 'registro', 
+        'paso': 0, 
+        'respuestas_texto': [], 
+        'preguntas_texto': [], 
+        'datos_usuario': {}, 
+        'enviado': False
+    })
 
-# --- 4. ETAPA 1: REGISTRO CON LOGO ---
+# --- 4. ETAPA 1: REGISTRO ---
 if st.session_state.etapa == 'registro':
-    # Intentar cargar el logo (probamos con ambos nombres posibles)
     logo_principal = 'Logotipo-SECURESOFT-GTD-Color-Fondo-Transparente.png'
-    logo_alt = 'OG_securesoft@2x.png'
-    
     if os.path.exists(logo_principal):
         st.image(logo_principal, width=350)
-    elif os.path.exists(logo_alt):
-        st.image(logo_alt, width=350)
-    else:
-        st.info("ℹ️ Asegúrate de que el archivo del logo esté en la misma carpeta que este script.")
-
+    
     st.markdown('<p class="cyber-main-title">Assessment Digital Estado de Ciberseguridad</p>', unsafe_allow_html=True)
     
-    st.write("### Datos del Responsable")
     col1, col2 = st.columns(2)
     with col1:
-        nom = st.text_input("Nombre Completo", placeholder="Ej: Juan Pérez")
-        car = st.text_input("Cargo", placeholder="Ej: CISO")
-        emp = st.text_input("Empresa", placeholder="Ej: SecureSoft")
+        nom = st.text_input("Nombre Completo")
+        car = st.text_input("Cargo")
+        emp = st.text_input("Empresa")
     with col2:
-        ema = st.text_input("Email Corporativo", placeholder="correo@empresa.com")
-        tel = st.text_input("Teléfono de Contacto", placeholder="+56 9...")
-        ind = st.text_input("Industria", placeholder="Ej: Tecnología")
+        ema = st.text_input("Email Corporativo")
+        tel = st.text_input("Teléfono de Contacto")
+        ind = st.text_input("Industria")
     
-    st.write("---")
     if st.button("INICIAR ASSESSMENT"):
         if all([nom, car, emp, ema, tel]):
             st.session_state.datos_usuario = {"Nombre": nom, "Cargo": car, "Empresa": emp, "Email": ema, "Telefono": tel, "Industria": ind}
             st.session_state.etapa = 'preguntas'
             st.rerun()
         else:
-            st.error("⚠️ Por favor, complete todos los campos obligatorios.")
+            st.error("Complete todos los campos obligatorios.")
 
-# --- 5. ETAPA 2: PREGUNTAS ---
+# --- 5. ETAPA 2: PREGUNTAS (LÓGICA MÚLTIPLE REFORZADA) ---
 elif st.session_state.etapa == 'preguntas':
     df_p = leer_word("01. Preguntas.docx")
     if not df_p.empty:
         fila = df_p.iloc[st.session_state.paso]
         st.progress((st.session_state.paso + 1) / len(df_p))
         
-        st.markdown(f"## {fila['Clave']}")
+        clave_full = fila['Clave']
+        # Limpiar número de la pregunta para el título
+        q_titulo = re.sub(r'^\d+[\.\s\-)]+', '', clave_full).strip()
+        st.markdown(f"## {q_titulo}")
+        
         opciones = [o.strip() for o in fila['Contenido'].split('\n') if o.strip()]
         
-        if "multiple" in fila['Clave'].lower():
-            ans = st.multiselect("Seleccione las opciones correspondientes:", opciones)
+        # Detección estricta de opción múltiple
+        es_multiple = any(x in clave_full.lower() for x in ["multiple", "múltiple"])
+        
+        if es_multiple:
+            ans = st.multiselect("Seleccione todas las opciones que correspondan:", opciones, key=f"q_{st.session_state.paso}")
         else:
-            ans = st.radio("Seleccione una opción:", opciones, index=None)
+            ans = st.radio("Seleccione una opción:", opciones, index=None, key=f"q_{st.session_state.paso}")
         
         if st.button("CONFIRMAR Y SIGUIENTE", type="primary"):
             if ans:
-                st.session_state.preguntas_texto.append(fila['Clave'])
+                # Guardamos la clave completa y la respuesta (como string)
+                st.session_state.preguntas_texto.append(clave_full)
                 st.session_state.respuestas_texto.append(", ".join(ans) if isinstance(ans, list) else ans)
+                
                 if st.session_state.paso < len(df_p) - 1:
                     st.session_state.paso += 1
                     st.rerun()
                 else:
                     st.session_state.etapa = 'resultado'
                     st.rerun()
+            else:
+                st.warning("Debe seleccionar al menos una respuesta.")
+
+# --- 6. ETAPA 3: REPORTE FINAL ---
+elif st.session_state.etapa == 'resultado':
+    st.title("✅ Análisis Finalizado")
+    if st.button("GENERAR REPORTE ESTRATÉGICO"):
+        st.session_state.enviado = True
+
+    if st.session_state.enviado:
+        df_rec = leer_word("02. Respuestas.docx")
+        pdf = PDF()
+        pdf.add_page()
+        pdf.set_font("Arial", 'B', 14)
+        pdf.cell(0, 10, clean_pdf(f"REPORTE PARA: {st.session_state.datos_usuario.get('Empresa', '')}"), 0, 1)
+        pdf.ln(5)
+
+        for i in range(len(st.session_state.preguntas_texto)):
+            p_text = st.session_state.preguntas_texto[i]
+            r_text = st.session_state.respuestas_texto[i]
+            
+            pdf.set_font("Arial", 'B', 10); pdf.set_text_color(50, 50, 50)
+            pdf.multi_cell(0, 6, clean_pdf(f"Pregunta {i+1}: {p_text}"))
+            
+            pdf.set_font("Arial", '', 10); pdf.set_text_color(0, 0, 0)
+            pdf.multi_cell(0, 6, clean_pdf(f"Hallazgo: {r_text}"))
+            
+            # Búsqueda de recomendaciones por ID (ej: 1.a) sin repetir contenido
+            ids = sorted(list(set(re.findall(r'(\d+\.[a-z])', r_text.lower()))))
+            mostrados = set()
+
+            if ids:
+                # Intentar combinación primero
+                comb = " y ".join(ids)
+                m_comb = df_rec[df_rec['Clave'].str.lower().str.contains(comb, na=False)]
+                if not m_comb.empty:
+                    txt = m_comb.iloc[0]['Contenido'].strip()
+                    pdf.ln(1); pdf.set_font("Arial", 'I', 9); pdf.set_text_color(0, 85, 165)
+                    pdf.multi_cell(0, 6, clean_pdf(f"Recomendacion: {txt}"), 1)
+                    mostrados.add(txt)
+                else:
+                    # Individuales si no hay combinación o contenido diferente
+                    for id_s in ids:
+                        m_s = df_rec[df_rec['Clave'].str.lower() == id_s]
+                        if not m_s.empty:
+                            txt_s = m_s.iloc[0]['Contenido'].strip()
+                            if txt_s not in mostrados:
+                                pdf.ln(1); pdf.set_font("Arial", 'I', 9); pdf.set_text_color(0, 85, 165)
+                                pdf.multi_cell(0, 6, clean_pdf(f"Recomendacion ({id_s}): {txt_s}"), 1)
+                                mostrados.add(txt_s)
+            pdf.ln(4)
+
+        st.download_button(
+            label="📥 DESCARGAR REPORTE EN PDF",
+            data=pdf.output(dest='S').encode('latin-1', 'replace'),
+            file_name=f"Assessment_{st.session_state.datos_usuario.get('Empresa', 'Cyber')}.pdf",
+            mime="application/pdf"
+        )
