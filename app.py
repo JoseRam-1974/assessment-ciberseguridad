@@ -1,5 +1,7 @@
 import streamlit as st
 import pandas as pd
+import matplotlib.pyplot as plt
+import numpy as np
 from docx import Document
 from fpdf import FPDF
 import re
@@ -38,14 +40,6 @@ st.markdown("""
         background-color: #ffffff !important;
         color: #0b111b !important;
         border-radius: 4px !important;
-    }
-
-    div.stButton > button {
-        background-color: #262730 !important;
-        color: #ffffff !important;
-        border: 1px solid #4a4a4b !important;
-        padding: 0.8rem 2.5rem !important;
-        text-transform: uppercase !important;
     }
 
     .stButton > button[kind="primary"] {
@@ -91,6 +85,24 @@ def clean_pdf(txt):
     for a, b in rep.items(): t = t.replace(a, b)
     return t.encode('latin-1', 'ignore').decode('latin-1')
 
+def generar_grafico_radar():
+    pilares = ["Identificar", "Proteger", "Detectar", "Responder", "Recuperar"]
+    # Puntuación simulada para el gráfico
+    valores = [80, 75, 60, 85, 70]
+    
+    angles = np.linspace(0, 2 * np.pi, len(pilares), endpoint=False).tolist()
+    valores += valores[:1]
+    angles += angles[:1]
+    
+    fig, ax = plt.subplots(figsize=(6, 6), subplot_kw=dict(polar=True))
+    ax.fill(angles, valores, color='#00adef', alpha=0.3)
+    ax.plot(angles, valores, color='#00adef', linewidth=2)
+    ax.set_xticks(angles[:-1])
+    ax.set_xticklabels(pilares, size=10)
+    plt.title("Madurez Ciberseguridad", size=14, y=1.1)
+    plt.savefig("radar_chart.png", bbox_inches='tight')
+    plt.close()
+
 class PDF(FPDF):
     def header(self):
         logo = 'Logotipo-SECURESOFT-GTD-Color-Fondo-Transparente.png'
@@ -109,7 +121,6 @@ if 'etapa' not in st.session_state:
 if st.session_state.etapa == 'registro':
     logo_path = 'Logotipo-SECURESOFT-GTD-Color-Fondo-Transparente.png'
     if os.path.exists(logo_path): st.image(logo_path, width=350)
-    
     st.markdown('<p class="cyber-main-title">Assessment Digital Estado de Ciberseguridad</p>', unsafe_allow_html=True)
     
     col1, col2 = st.columns(2)
@@ -122,7 +133,7 @@ if st.session_state.etapa == 'registro':
         tel = st.text_input("Teléfono de Contacto")
         ind = st.text_input("Industria")
     
-    if st.button("INICIAR ASSESSMENT"):
+    if st.button("INICIAR ASSESSMENT", type="primary"):
         if all([nom, car, emp, ema, tel]):
             st.session_state.datos_usuario = {"Nombre": nom, "Cargo": car, "Empresa": emp, "Email": ema, "Telefono": tel, "Industria": ind}
             st.session_state.etapa = 'preguntas'
@@ -136,8 +147,8 @@ elif st.session_state.etapa == 'preguntas':
     if not df_p.empty:
         fila = df_p.iloc[st.session_state.paso]
         st.progress((st.session_state.paso + 1) / len(df_p))
-        
         st.write(f"### {fila['Clave']}")
+        
         opciones = [o.strip() for o in fila['Contenido'].split('\n') if o.strip()]
         es_multiple = any(x in fila['Clave'].lower() for x in ["multiple", "múltiple"])
         
@@ -157,65 +168,53 @@ elif st.session_state.etapa == 'preguntas':
                     st.session_state.etapa = 'resultado'
                     st.rerun()
 
-# --- 6. ETAPA 3: REPORTE Y DESCARGA REAL ---
+# --- 6. ETAPA 3: RESULTADO Y PDF ---
 elif st.session_state.etapa == 'resultado':
     st.markdown('<p class="cyber-main-title">✅ Evaluación Finalizada</p>', unsafe_allow_html=True)
-    
-    st.markdown(f"""
-    <div class="thank-you-box">
-        <h3>¡Gracias, {st.session_state.datos_usuario['Nombre']}!</h3>
-        <p>El reporte para <b>{st.session_state.datos_usuario['Empresa']}</b> ya puede ser generado.</p>
-    </div>
-    """, unsafe_allow_html=True)
+    st.markdown(f'<div class="thank-you-box"><h3>¡Gracias, {st.session_state.datos_usuario["Nombre"]}!</h3><p>Reporte para <b>{st.session_state.datos_usuario["Empresa"]}</b>.</p></div>', unsafe_allow_html=True)
 
-    opcion_contacto = st.radio(
-        "¿Cómo desea recibir su informe estratégico?",
-        [
-            "Deseo una sesión de consultoría gratuita para revisar el reporte con un experto.",
-            "Solo deseo descargar el informe en PDF por ahora."
-        ],
-        index=None
-    )
+    opcion_contacto = st.radio("¿Cómo desea recibir su informe estratégico?", 
+                               ["Deseo una sesión de consultoría gratuita.", "Solo descargar el informe en PDF por ahora."], index=None)
 
     if st.button("GENERAR REPORTE PDF", type="primary"):
         if opcion_contacto:
-            # --- GENERACIÓN REAL DEL PDF ---
+            generar_grafico_radar()
             df_rec = leer_word("02. Respuestas.docx")
+            
             pdf = PDF()
+            pdf.set_auto_page_break(auto=True, margin=15)
             pdf.add_page()
-            pdf.set_font("Arial", 'B', 14)
-            pdf.cell(0, 10, clean_pdf(f"REPORTE DE CIBERSEGURIDAD: {st.session_state.datos_usuario['Empresa']}"), 0, 1)
-            pdf.ln(5)
+            
+            pdf.set_font("Arial", 'B', 16)
+            pdf.cell(0, 10, clean_pdf(f"REPORTE: {st.session_state.datos_usuario['Empresa']}"), 0, 1, 'C')
+            
+            # Gráfico con espacio de seguridad
+            if os.path.exists("radar_chart.png"):
+                pdf.image("radar_chart.png", x=55, y=40, w=100)
+                pdf.set_y(145) # Baja el cursor debajo del gráfico
+
+            pdf.set_font("Arial", 'B', 12); pdf.set_text_color(0, 85, 165)
+            pdf.cell(0, 10, "Hallazgos y Recomendaciones:", 0, 1); pdf.ln(5)
 
             for i in range(len(st.session_state.preguntas_texto)):
-                p_text = st.session_state.preguntas_texto[i]
-                r_text = st.session_state.respuestas_texto[i]
+                p_text, r_text = st.session_state.preguntas_texto[i], st.session_state.respuestas_texto[i]
                 
-                # Pregunta
                 pdf.set_font("Arial", 'B', 10); pdf.set_text_color(50, 50, 50)
-                pdf.multi_cell(0, 6, clean_pdf(f"Pregunta {i+1}: {p_text}"))
+                pdf.multi_cell(190, 6, clean_pdf(f"P{i+1}: {p_text}"))
                 
-                # Respuesta del usuario
                 pdf.set_font("Arial", '', 10); pdf.set_text_color(0, 0, 0)
-                pdf.multi_cell(0, 6, clean_pdf(f"Resultado: {r_text}"))
+                pdf.multi_cell(190, 6, clean_pdf(f"Resultado: {r_text}"))
                 
-                # Buscar recomendación en el Word de respuestas
                 ids = sorted(list(set(re.findall(r'(\d+\.[a-z])', r_text.lower()))))
                 for id_s in ids:
                     m_s = df_rec[df_rec['Clave'].str.lower() == id_s]
                     if not m_s.empty:
-                        txt_s = m_s.iloc[0]['Contenido'].strip()
-                        pdf.ln(1); pdf.set_font("Arial", 'I', 9); pdf.set_text_color(0, 85, 165)
-                        pdf.multi_cell(0, 6, clean_pdf(f"Recomendacion ({id_s}): {txt_s}"), 1)
+                        pdf.set_font("Arial", 'I', 9); pdf.set_text_color(0, 173, 239)
+                        pdf.multi_cell(185, 6, clean_pdf(f"Recomendacion ({id_s}): {m_s.iloc[0]['Contenido'].strip()}"), border=1)
                 pdf.ln(4)
 
-            # Botón de descarga con los datos reales
-            st.success("✅ Informe generado exitosamente.")
-            st.download_button(
-                label="📥 CLIC AQUÍ PARA DESCARGAR EL REPORTE",
-                data=pdf.output(dest='S').encode('latin-1', 'replace'),
-                file_name=f"Reporte_Cyber_{st.session_state.datos_usuario['Empresa']}.pdf",
-                mime="application/pdf"
-            )
-        else:
-            st.warning("Seleccione una opción de contacto para habilitar la descarga.")
+            st.success("✅ Informe listo.")
+            st.download_button(label="📥 DESCARGAR REPORTE", 
+                             data=pdf.output(dest='S').encode('latin-1', 'replace'),
+                             file_name=f"Reporte_{st.session_state.datos_usuario['Empresa']}.pdf",
+                             mime="application/pdf")
