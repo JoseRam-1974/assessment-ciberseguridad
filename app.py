@@ -13,7 +13,7 @@ st.markdown("""
     <style>
     .stApp { background-color: #0b111b; color: #ffffff; }
     
-    /* Etiquetas de campos */
+    /* Etiquetas y Labels */
     .stTextInput label, .stRadio label, .stMultiSelect label, .stSelectbox label {
         color: #ffffff !important;
         font-weight: bold !important;
@@ -42,6 +42,7 @@ st.markdown("""
     div.stButton > button:hover {
         border-color: #00c3ff !important;
         color: #00c3ff !important;
+        background-color: #1e1e26 !important;
     }
 
     /* BOTÓN DE DESCARGA (GRIS CON LETRAS BLANCAS) */
@@ -117,7 +118,7 @@ if st.session_state.etapa == 'registro':
                 st.session_state.datos_usuario = {"Nombre": nom, "Cargo": car, "Empresa": emp, "Email": ema, "Telefono": tel, "Industria": ind}
                 st.session_state.etapa = 'preguntas'
                 st.rerun()
-            else: st.error("Complete todos los campos.")
+            else: st.error("Por favor rellene todos los campos obligatorios.")
 
 # --- 5. ETAPA 2: PREGUNTAS ---
 elif st.session_state.etapa == 'preguntas':
@@ -134,7 +135,7 @@ elif st.session_state.etapa == 'preguntas':
         es_multiple = "multiple" in clave_q.lower() or "múltiple" in clave_q.lower()
         
         if es_multiple:
-            ans = st.multiselect("Seleccione opciones:", opciones)
+            ans = st.multiselect("Seleccione una o más opciones:", opciones)
         else:
             ans = st.radio("Seleccione una:", opciones, index=None)
         
@@ -170,39 +171,47 @@ elif st.session_state.etapa == 'resultado':
             
             pdf.set_font("Arial", 'B', 10)
             pdf.set_text_color(50, 50, 50)
-            pdf.multi_cell(0, 6, clean_pdf(f"Pregunta {i+1}: {p_full}"))
+            p_limpia = re.sub(r'^\d+[\.\s\-)]+', '', p_full).strip()
+            pdf.multi_cell(0, 6, clean_pdf(f"Pregunta {i+1}: {p_limpia}"))
             
             pdf.set_font("Arial", '', 10)
             pdf.set_text_color(0, 0, 0)
             pdf.multi_cell(0, 6, clean_pdf(f"Hallazgo: {r_u}"))
             
-            # --- LÓGICA DE BÚSQUEDA AVANZADA DE RECOMENDACIONES ---
+            # --- LÓGICA DE RECOMENDACIONES SIN DUPLICADOS TEXTUALES ---
             ids = sorted(list(set(re.findall(r'(\d+\.[a-z])', r_u.lower()))))
-            
+            recomendaciones_escritas = set() # Para rastrear el contenido textual ya impreso
+
             if ids:
-                # 1. Intentar buscar recomendación combinada (ej: "5.a y 5.b")
+                # 1. Prioridad: Buscar Recomendación Combinada
                 combinacion = " y ".join(ids)
-                match_compuesto = df_rec[df_rec['Clave'].str.lower().str.contains(combinacion, na=False)]
+                match_comp = df_rec[df_rec['Clave'].str.lower().str.contains(combinacion, na=False)]
                 
-                if not match_compuesto.empty:
+                if not match_comp.empty:
+                    contenido = match_comp.iloc[0]['Contenido'].strip()
                     pdf.ln(1)
                     pdf.set_font("Arial", 'I', 9)
                     pdf.set_text_color(0, 85, 165)
-                    pdf.multi_cell(0, 6, clean_pdf(f"Recomendacion ({combinacion}): {match_compuesto.iloc[0]['Contenido']}"), 1)
+                    pdf.multi_cell(0, 6, clean_pdf(f"Recomendacion: {contenido}"), 1)
+                    recomendaciones_escritas.add(contenido)
                 else:
-                    # 2. Si no hay combinada, poner las individuales
+                    # 2. Alternativa: Recomendaciones Individuales
                     for id_single in ids:
                         match_single = df_rec[df_rec['Clave'].str.lower() == id_single]
                         if not match_single.empty:
-                            pdf.ln(1)
-                            pdf.set_font("Arial", 'I', 9)
-                            pdf.set_text_color(0, 85, 165)
-                            pdf.multi_cell(0, 6, clean_pdf(f"Recomendacion ({id_single}): {match_single.iloc[0]['Contenido']}"), 1)
+                            contenido_s = match_single.iloc[0]['Contenido'].strip()
+                            # SOLO si el contenido no ha sido escrito ya para esta pregunta
+                            if contenido_s not in recomendaciones_escritas:
+                                pdf.ln(1)
+                                pdf.set_font("Arial", 'I', 9)
+                                pdf.set_text_color(0, 85, 165)
+                                pdf.multi_cell(0, 6, clean_pdf(f"Recomendacion ({id_single}): {contenido_s}"), 1)
+                                recomendaciones_escritas.add(contenido_s)
             pdf.ln(4)
 
         st.download_button(
             label="📥 DESCARGAR INFORME COMPLETO (PDF)",
             data=pdf.output(dest='S').encode('latin-1', 'replace'),
-            file_name="Assessment_Cyber.pdf",
+            file_name=f"Assessment_{st.session_state.datos_usuario.get('Empresa', 'GTD')}.pdf",
             mime="application/pdf"
         )
