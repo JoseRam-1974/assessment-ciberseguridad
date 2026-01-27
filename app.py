@@ -42,7 +42,7 @@ st.markdown("""
         font-weight: 600 !important;
     }
 
-    /* Gradiente para botón Siguiente (Como en la foto) */
+    /* Gradiente para botones principales y de navegación */
     .stButton > button[kind="primary"] {
         background: linear-gradient(90deg, #00adef 0%, #0055a5 100%) !important;
         border: none !important;
@@ -55,6 +55,17 @@ st.markdown("""
         color: #ffffff !important;
         border: 1px solid #666666 !important;
         width: 100% !important;
+        font-weight: bold !important;
+        padding: 0.8rem !important;
+    }
+    
+    /* Contenedor de agradecimiento */
+    .thank-you-box {
+        background-color: #161f2d;
+        padding: 2rem;
+        border-radius: 10px;
+        border-left: 5px solid #00adef;
+        margin-bottom: 2rem;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -96,7 +107,7 @@ if 'etapa' not in st.session_state:
         'respuestas_texto': [], 
         'preguntas_texto': [], 
         'datos_usuario': {}, 
-        'enviado': False
+        'solicitud_asesoria': None
     })
 
 # --- 4. ETAPA 1: REGISTRO ---
@@ -123,9 +134,9 @@ if st.session_state.etapa == 'registro':
             st.session_state.etapa = 'preguntas'
             st.rerun()
         else:
-            st.error("Complete todos los campos obligatorios.")
+            st.error("Por favor, complete todos los campos obligatorios.")
 
-# --- 5. ETAPA 2: PREGUNTAS (LÓGICA MÚLTIPLE REFORZADA) ---
+# --- 5. ETAPA 2: PREGUNTAS ---
 elif st.session_state.etapa == 'preguntas':
     df_p = leer_word("01. Preguntas.docx")
     if not df_p.empty:
@@ -133,26 +144,21 @@ elif st.session_state.etapa == 'preguntas':
         st.progress((st.session_state.paso + 1) / len(df_p))
         
         clave_full = fila['Clave']
-        # Limpiar número de la pregunta para el título
         q_titulo = re.sub(r'^\d+[\.\s\-)]+', '', clave_full).strip()
         st.markdown(f"## {q_titulo}")
         
         opciones = [o.strip() for o in fila['Contenido'].split('\n') if o.strip()]
-        
-        # Detección estricta de opción múltiple
         es_multiple = any(x in clave_full.lower() for x in ["multiple", "múltiple"])
         
         if es_multiple:
-            ans = st.multiselect("Seleccione todas las opciones que correspondan:", opciones, key=f"q_{st.session_state.paso}")
+            ans = st.multiselect("Seleccione todas las que correspondan:", opciones, key=f"q_{st.session_state.paso}")
         else:
             ans = st.radio("Seleccione una opción:", opciones, index=None, key=f"q_{st.session_state.paso}")
         
         if st.button("CONFIRMAR Y SIGUIENTE", type="primary"):
             if ans:
-                # Guardamos la clave completa y la respuesta (como string)
                 st.session_state.preguntas_texto.append(clave_full)
                 st.session_state.respuestas_texto.append(", ".join(ans) if isinstance(ans, list) else ans)
-                
                 if st.session_state.paso < len(df_p) - 1:
                     st.session_state.paso += 1
                     st.rerun()
@@ -160,60 +166,85 @@ elif st.session_state.etapa == 'preguntas':
                     st.session_state.etapa = 'resultado'
                     st.rerun()
             else:
-                st.warning("Debe seleccionar al menos una respuesta.")
+                st.warning("Seleccione una respuesta para continuar.")
 
-# --- 6. ETAPA 3: REPORTE FINAL ---
+# --- 6. ETAPA 3: FINALIZACIÓN Y CONTACTO ---
 elif st.session_state.etapa == 'resultado':
-    st.title("✅ Análisis Finalizado")
-    if st.button("GENERAR REPORTE ESTRATÉGICO"):
-        st.session_state.enviado = True
+    st.markdown('<p class="cyber-main-title">✅ Assessment Finalizado con Éxito</p>', unsafe_allow_html=True)
+    
+    st.markdown(f"""
+    <div class="thank-you-box">
+        <h3>¡Gracias por completar el análisis, {st.session_state.datos_usuario['Nombre']}!</h3>
+        <p>Hemos procesado tus respuestas sobre el estado de ciberseguridad de <b>{st.session_state.datos_usuario['Empresa']}</b>. 
+        El informe detallado con hallazgos y recomendaciones estratégicas ya está listo.</p>
+    </div>
+    """, unsafe_allow_html=True)
 
-    if st.session_state.enviado:
-        df_rec = leer_word("02. Respuestas.docx")
-        pdf = PDF()
-        pdf.add_page()
-        pdf.set_font("Arial", 'B', 14)
-        pdf.cell(0, 10, clean_pdf(f"REPORTE PARA: {st.session_state.datos_usuario.get('Empresa', '')}"), 0, 1)
-        pdf.ln(5)
+    st.write("### ¿Cómo te gustaría proceder?")
+    
+    # Opción de contacto mejorada
+    opcion_contacto = st.radio(
+        "Para una interpretación más profunda de estos resultados:",
+        [
+            "Deseo una sesión de consultoría gratuita para revisar mi reporte con un experto de SecureSoft.",
+            "Solo deseo descargar el informe por el momento."
+        ],
+        index=None
+    )
 
-        for i in range(len(st.session_state.preguntas_texto)):
-            p_text = st.session_state.preguntas_texto[i]
-            r_text = st.session_state.respuestas_texto[i]
+    if st.button("GENERAR INFORME FINAL", type="primary"):
+        if opcion_contacto:
+            st.session_state.solicitud_asesoria = opcion_contacto
             
-            pdf.set_font("Arial", 'B', 10); pdf.set_text_color(50, 50, 50)
-            pdf.multi_cell(0, 6, clean_pdf(f"Pregunta {i+1}: {p_text}"))
-            
-            pdf.set_font("Arial", '', 10); pdf.set_text_color(0, 0, 0)
-            pdf.multi_cell(0, 6, clean_pdf(f"Hallazgo: {r_text}"))
-            
-            # Búsqueda de recomendaciones por ID (ej: 1.a) sin repetir contenido
-            ids = sorted(list(set(re.findall(r'(\d+\.[a-z])', r_text.lower()))))
-            mostrados = set()
+            # --- GENERACIÓN DEL PDF ---
+            df_rec = leer_word("02. Respuestas.docx")
+            pdf = PDF()
+            pdf.add_page()
+            pdf.set_font("Arial", 'B', 14)
+            pdf.cell(0, 10, clean_pdf(f"INFORME DE CIBERSEGURIDAD: {st.session_state.datos_usuario['Empresa']}"), 0, 1)
+            pdf.ln(5)
 
-            if ids:
-                # Intentar combinación primero
-                comb = " y ".join(ids)
-                m_comb = df_rec[df_rec['Clave'].str.lower().str.contains(comb, na=False)]
-                if not m_comb.empty:
-                    txt = m_comb.iloc[0]['Contenido'].strip()
-                    pdf.ln(1); pdf.set_font("Arial", 'I', 9); pdf.set_text_color(0, 85, 165)
-                    pdf.multi_cell(0, 6, clean_pdf(f"Recomendacion: {txt}"), 1)
-                    mostrados.add(txt)
-                else:
-                    # Individuales si no hay combinación o contenido diferente
-                    for id_s in ids:
-                        m_s = df_rec[df_rec['Clave'].str.lower() == id_s]
-                        if not m_s.empty:
-                            txt_s = m_s.iloc[0]['Contenido'].strip()
-                            if txt_s not in mostrados:
-                                pdf.ln(1); pdf.set_font("Arial", 'I', 9); pdf.set_text_color(0, 85, 165)
-                                pdf.multi_cell(0, 6, clean_pdf(f"Recomendacion ({id_s}): {txt_s}"), 1)
-                                mostrados.add(txt_s)
-            pdf.ln(4)
+            for i in range(len(st.session_state.preguntas_texto)):
+                p_text = st.session_state.preguntas_texto[i]
+                r_text = st.session_state.respuestas_texto[i]
+                
+                pdf.set_font("Arial", 'B', 10); pdf.set_text_color(50, 50, 50)
+                pdf.multi_cell(0, 6, clean_pdf(f"Pregunta {i+1}: {p_text}"))
+                pdf.set_font("Arial", '', 10); pdf.set_text_color(0, 0, 0)
+                pdf.multi_cell(0, 6, clean_pdf(f"Hallazgo: {r_text}"))
+                
+                # Recomendaciones únicas
+                ids = sorted(list(set(re.findall(r'(\d+\.[a-z])', r_text.lower()))))
+                mostrados = set()
+                if ids:
+                    comb = " y ".join(ids)
+                    m_comb = df_rec[df_rec['Clave'].str.lower().str.contains(comb, na=False)]
+                    if not m_comb.empty:
+                        txt = m_comb.iloc[0]['Contenido'].strip()
+                        pdf.ln(1); pdf.set_font("Arial", 'I', 9); pdf.set_text_color(0, 85, 165)
+                        pdf.multi_cell(0, 6, clean_pdf(f"Recomendacion: {txt}"), 1)
+                        mostrados.add(txt)
+                    else:
+                        for id_s in ids:
+                            m_s = df_rec[df_rec['Clave'].str.lower() == id_s]
+                            if not m_s.empty:
+                                txt_s = m_s.iloc[0]['Contenido'].strip()
+                                if txt_s not in mostrados:
+                                    pdf.ln(1); pdf.set_font("Arial", 'I', 9); pdf.set_text_color(0, 85, 165)
+                                    pdf.multi_cell(0, 6, clean_pdf(f"Recomendacion ({id_s}): {txt_s}"), 1)
+                                    mostrados.add(txt_s)
+                pdf.ln(4)
 
-        st.download_button(
-            label="📥 DESCARGAR REPORTE EN PDF",
-            data=pdf.output(dest='S').encode('latin-1', 'replace'),
-            file_name=f"Assessment_{st.session_state.datos_usuario.get('Empresa', 'Cyber')}.pdf",
-            mime="application/pdf"
-        )
+            # Mostrar botón de descarga solo después de generar
+            st.success("✅ Informe generado correctamente.")
+            st.download_button(
+                label="📥 DESCARGAR INFORME DE CIBERSEGURIDAD (PDF)",
+                data=pdf.output(dest='S').encode('latin-1', 'replace'),
+                file_name=f"Reporte_Cyber_{st.session_state.datos_usuario['Empresa']}.pdf",
+                mime="application/pdf"
+            )
+            
+            if "consultoría" in st.session_state.solicitud_asesoria:
+                st.info("📌 Un consultor Senior de SecureSoft GTD se pondrá en contacto con usted a la brevedad para agendar la sesión.")
+        else:
+            st.warning("⚠️ Por favor, seleccione una opción para poder generar su informe.")
