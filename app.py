@@ -10,46 +10,51 @@ import os
 # --- 1. CONFIGURACIÓN E IDENTIDAD VISUAL ---
 st.set_page_config(page_title="SecureSoft GTD | Cyber Assessment", page_icon="🛡️", layout="wide")
 
-# CSS para botones estilo degradado, visibilidad de etiquetas y modo oscuro
+# CSS Actualizado
 st.markdown("""
     <style>
     .stApp { background-color: #0b111b; color: #ffffff; }
     
-    /* Etiquetas de campos: Blanco puro para legibilidad total */
+    /* Etiquetas de campos */
     .stTextInput label, .stRadio label, .stMultiSelect label, .stSelectbox label {
         color: #ffffff !important;
         font-weight: bold !important;
         font-size: 1.1rem !important;
     }
 
-    /* Inputs: Fondo blanco y texto negro para visualización clara */
+    /* Inputs */
     .stTextInput input {
         background-color: #ffffff !important;
         color: #0b111b !important;
         border-radius: 5px !important;
     }
 
-    /* BOTÓN LLAMATIVO (Estilo Confirmar y Siguiente de la imagen) */
-    .stButton>button {
+    /* --- ESTILO DEL BOTÓN SOLICITADO (Gris Oscuro / Profesional) --- */
+    /* Se aplica a los botones de formulario y botones normales */
+    div.stButton > button {
         width: 100%;
-        background: linear-gradient(90deg, #00adef 0%, #0055a5 100%) !important;
+        background-color: #262730 !important;
         color: #ffffff !important;
-        border: none !important;
-        font-weight: 700 !important;
-        font-size: 1.1rem !important;
-        height: 3.2em !important;
-        border-radius: 8px !important;
-        box-shadow: 0px 4px 10px rgba(0, 173, 239, 0.3) !important;
-        transition: all 0.3s ease;
-        text-transform: uppercase;
-    }
-    .stButton>button:hover {
-        transform: scale(1.01);
-        box-shadow: 0px 6px 15px rgba(0, 173, 239, 0.5) !important;
-        opacity: 0.95;
+        border: 1px solid #4a4a4b !important;
+        border-radius: 4px !important;
+        padding: 0.6rem 1rem !important;
+        font-size: 14px !important;
+        font-weight: 500 !important;
+        text-transform: uppercase !important;
+        letter-spacing: 1px !important;
+        transition: all 0.3s ease !important;
     }
 
-    /* Estilo para el título del Assessment */
+    div.stButton > button:hover {
+        border-color: #00c3ff !important;
+        color: #00c3ff !important;
+        background-color: #1e1e26 !important;
+        box-shadow: 0px 4px 15px rgba(0, 195, 255, 0.2) !important;
+    }
+
+    /* Mantener estilo degradado SOLO para botones de 'Finalizar' o 'Siguiente' si lo deseas, 
+       o dejar todos con el nuevo estilo gris. Aquí lo aplicamos a todos por consistencia. */
+
     .cyber-title {
         color: #00adef;
         font-weight: 800;
@@ -80,7 +85,6 @@ def clean_pdf(txt):
 
 class PDF(FPDF):
     def header(self):
-        # Intenta cargar el logo de SecureSoft
         logo_path = 'OG_securesoft@2x.png'
         if os.path.exists(logo_path):
             self.image(logo_path, 10, 8, 33)
@@ -102,25 +106,30 @@ if st.session_state.etapa == 'registro':
     st.markdown('<p class="cyber-title">SECURESOFT GTD</p>', unsafe_allow_html=True)
     st.subheader("Assessment de Madurez y Resiliencia Digital")
     
-    with st.form("reg_form"):
-        c1, c2 = st.columns(2)
-        with c1:
-            nom = st.text_input("Nombre Completo")
-            car = st.text_input("Cargo")
-            emp = st.text_input("Empresa")
-        with c2:
-            ema = st.text_input("Email Corporativo")
-            tel = st.text_input("Telefono de Contacto")
-        
-        st.write(" ")
-        # El botón ahora hereda el estilo degradado del CSS
-        if st.form_submit_button("INICIAR ASSESSMENT"):
-            if all([nom, car, emp, ema, tel]):
-                st.session_state.datos_usuario = {"Nombre": nom, "Cargo": car, "Empresa": emp, "Email": ema, "Telefono": tel}
-                st.session_state.etapa = 'preguntas'
-                st.rerun()
-            else:
-                st.error("Por favor rellene todos los campos obligatorios.")
+    with st.container(border=True):
+        st.write("### Datos del Responsable")
+        with st.form("reg_form"):
+            c1, c2 = st.columns(2)
+            with c1:
+                nom = st.text_input("Nombre Completo")
+                car = st.text_input("Cargo")
+                emp = st.text_input("Empresa")
+            with c2:
+                ema = st.text_input("Email Corporativo")
+                tel = st.text_input("Telefono de Contacto")
+                ind = st.text_input("Industria")
+            
+            st.write(" ")
+            # El botón hereda el nuevo estilo gris oscuro
+            submit = st.form_submit_button("INICIAR ASSESSMENT")
+            
+            if submit:
+                if all([nom, car, emp, ema, tel]):
+                    st.session_state.datos_usuario = {"Nombre": nom, "Cargo": car, "Empresa": emp, "Email": ema, "Telefono": tel}
+                    st.session_state.etapa = 'preguntas'
+                    st.rerun()
+                else:
+                    st.error("Por favor rellene todos los campos obligatorios.")
 
 # --- 5. ETAPA 2: PREGUNTAS ---
 elif st.session_state.etapa == 'preguntas':
@@ -129,7 +138,6 @@ elif st.session_state.etapa == 'preguntas':
         fila = df_p.iloc[st.session_state.paso]
         st.progress((st.session_state.paso + 1) / len(df_p))
         
-        # UI Pregunta: Eliminamos prefijos numéricos para que no se repitan
         txt_pregunta = re.sub(r'^\d+[\.\s\-)]+', '', fila['Clave']).strip()
         st.markdown(f"### {txt_pregunta}")
         
@@ -168,7 +176,6 @@ elif st.session_state.etapa == 'resultado':
             else:
                 st.warning("Selecciona una opción de contacto para proceder.")
     else:
-        # Generar PDF
         df_rec = leer_word("02. Respuestas.docx")
         pdf = PDF()
         pdf.add_page()
@@ -179,8 +186,6 @@ elif st.session_state.etapa == 'resultado':
         for i in range(len(st.session_state.preguntas_texto)):
             p_full = st.session_state.preguntas_texto[i]
             resp_u = st.session_state.respuestas_texto[i]
-            
-            # Limpieza del PDF para evitar "Pregunta 3: 3. Su empresa..."
             p_limpia_pdf = re.sub(r'^\d+[\.\s\-)]+', '', p_full).strip()
             
             pdf.set_font("Arial", 'B', 10)
@@ -191,7 +196,6 @@ elif st.session_state.etapa == 'resultado':
             pdf.set_text_color(0, 0, 0)
             pdf.multi_cell(0, 6, clean_pdf(f"Hallazgo: {resp_u}"))
 
-            # Recomendación
             ids = re.findall(r'(\d+\.[a-z])', resp_u.lower())
             if ids:
                 for id_u in ids:
