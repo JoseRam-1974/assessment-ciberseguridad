@@ -10,10 +10,8 @@ st.set_page_config(page_title="SecureSoft GTD | Assessment Digital", page_icon="
 
 st.markdown("""
     <style>
-    /* Fondo general */
     .stApp { background-color: #0b111b; color: #ffffff; }
     
-    /* Título principal */
     .cyber-main-title { 
         color: #ffffff; 
         font-weight: 700; 
@@ -21,33 +19,27 @@ st.markdown("""
         margin-bottom: 30px; 
     }
 
-    /* --- AJUSTE DE VISIBILIDAD DE OPCIONES --- */
-    /* Forzar que el texto de las opciones (Radio y Multiselect) sea BLANCO */
-    div[data-testid="stMarkdownContainer"] p {
+    /* VISIBILIDAD DE OPCIONES: TEXTO EN BLANCO */
+    div[data-testid="stMarkdownContainer"] p, 
+    div[role="radiogroup"] label p, 
+    div[data-testid="stMultiSelect"] label p {
         color: #ffffff !important;
         font-size: 1.1rem !important;
     }
 
-    /* Forzar color en las etiquetas de los Radio Buttons */
+    /* PREGUNTAS EN CELESTE BRILLANTE */
     label[data-testid="stWidgetLabel"] p {
-        color: #00adef !important; /* Celeste brillante para la pregunta */
+        color: #00adef !important;
         font-weight: bold !important;
         font-size: 1.2rem !important;
     }
 
-    /* Color de las opciones no seleccionadas (Blanco) */
-    div[role="radiogroup"] label p, div[data-testid="stMultiSelect"] label p {
-        color: #ffffff !important;
-    }
-
-    /* Estilo de los inputs de texto */
     .stTextInput input {
         background-color: #ffffff !important;
         color: #0b111b !important;
         border-radius: 4px !important;
     }
 
-    /* BOTONES */
     div.stButton > button {
         background-color: #262730 !important;
         color: #ffffff !important;
@@ -56,13 +48,20 @@ st.markdown("""
         text-transform: uppercase !important;
     }
 
-    /* Botón Siguiente con gradiente */
     .stButton > button[kind="primary"] {
         background: linear-gradient(90deg, #00adef 0%, #0055a5 100%) !important;
         border: none !important;
     }
 
-    /* Caja de agradecimiento final */
+    div.stDownloadButton > button {
+        background: linear-gradient(90deg, #28a745 0%, #1e7e34 100%) !important;
+        color: #ffffff !important;
+        border: none !important;
+        width: 100% !important;
+        font-weight: bold !important;
+        padding: 1rem !important;
+    }
+    
     .thank-you-box {
         background-color: #161f2d;
         padding: 2rem;
@@ -87,7 +86,7 @@ def leer_word(ruta):
 
 def clean_pdf(txt):
     if not txt: return ""
-    rep = {"á":"a","é":"e","í":"i","ó":"o","ú":"u","ñ":"n","Á":"A","É":"E","Í":"I","Ó":"O","Ú":"U","Ñ":"N"}
+    rep = {"á":"a","é":"e","í":"i","ó":"o","ú":"u","ñ":"n","Á":"A","É":"E","Í":"I","Ó":"O","Ú":"U","Ñ":"N","¿":"","¡":"","–":"-"}
     t = str(txt)
     for a, b in rep.items(): t = t.replace(a, b)
     return t.encode('latin-1', 'ignore').decode('latin-1')
@@ -109,8 +108,7 @@ if 'etapa' not in st.session_state:
 # --- 4. ETAPA 1: REGISTRO ---
 if st.session_state.etapa == 'registro':
     logo_path = 'Logotipo-SECURESOFT-GTD-Color-Fondo-Transparente.png'
-    if os.path.exists(logo_path):
-        st.image(logo_path, width=350)
+    if os.path.exists(logo_path): st.image(logo_path, width=350)
     
     st.markdown('<p class="cyber-main-title">Assessment Digital Estado de Ciberseguridad</p>', unsafe_allow_html=True)
     
@@ -130,7 +128,7 @@ if st.session_state.etapa == 'registro':
             st.session_state.etapa = 'preguntas'
             st.rerun()
         else:
-            st.error("Por favor, complete los campos para iniciar.")
+            st.error("Por favor, complete los campos obligatorios.")
 
 # --- 5. ETAPA 2: PREGUNTAS ---
 elif st.session_state.etapa == 'preguntas':
@@ -139,14 +137,12 @@ elif st.session_state.etapa == 'preguntas':
         fila = df_p.iloc[st.session_state.paso]
         st.progress((st.session_state.paso + 1) / len(df_p))
         
-        # Título de pregunta en Celeste brillante vía CSS
         st.write(f"### {fila['Clave']}")
-        
         opciones = [o.strip() for o in fila['Contenido'].split('\n') if o.strip()]
         es_multiple = any(x in fila['Clave'].lower() for x in ["multiple", "múltiple"])
         
         if es_multiple:
-            ans = st.multiselect("Seleccione las opciones que correspondan:", opciones, key=f"q_{st.session_state.paso}")
+            ans = st.multiselect("Seleccione las opciones:", opciones, key=f"q_{st.session_state.paso}")
         else:
             ans = st.radio("Seleccione una opción:", opciones, index=None, key=f"q_{st.session_state.paso}")
         
@@ -161,14 +157,14 @@ elif st.session_state.etapa == 'preguntas':
                     st.session_state.etapa = 'resultado'
                     st.rerun()
 
-# --- 6. ETAPA 3: RESULTADO Y CONTACTO ---
+# --- 6. ETAPA 3: REPORTE Y DESCARGA REAL ---
 elif st.session_state.etapa == 'resultado':
     st.markdown('<p class="cyber-main-title">✅ Evaluación Finalizada</p>', unsafe_allow_html=True)
     
     st.markdown(f"""
     <div class="thank-you-box">
         <h3>¡Gracias, {st.session_state.datos_usuario['Nombre']}!</h3>
-        <p>El diagnóstico para <b>{st.session_state.datos_usuario['Empresa']}</b> ha sido procesado.</p>
+        <p>El reporte para <b>{st.session_state.datos_usuario['Empresa']}</b> ya puede ser generado.</p>
     </div>
     """, unsafe_allow_html=True)
 
@@ -181,10 +177,45 @@ elif st.session_state.etapa == 'resultado':
         index=None
     )
 
-    if st.button("GENERAR DOCUMENTO", type="primary"):
+    if st.button("GENERAR REPORTE PDF", type="primary"):
         if opcion_contacto:
-            # Lógica de PDF... (omito el bucle por brevedad, es el mismo de antes)
-            st.success("✅ Informe generado.")
-            st.download_button("📥 DESCARGAR REPORTE", data=b"Contenido PDF", file_name="Reporte.pdf")
+            # --- GENERACIÓN REAL DEL PDF ---
+            df_rec = leer_word("02. Respuestas.docx")
+            pdf = PDF()
+            pdf.add_page()
+            pdf.set_font("Arial", 'B', 14)
+            pdf.cell(0, 10, clean_pdf(f"REPORTE DE CIBERSEGURIDAD: {st.session_state.datos_usuario['Empresa']}"), 0, 1)
+            pdf.ln(5)
+
+            for i in range(len(st.session_state.preguntas_texto)):
+                p_text = st.session_state.preguntas_texto[i]
+                r_text = st.session_state.respuestas_texto[i]
+                
+                # Pregunta
+                pdf.set_font("Arial", 'B', 10); pdf.set_text_color(50, 50, 50)
+                pdf.multi_cell(0, 6, clean_pdf(f"Pregunta {i+1}: {p_text}"))
+                
+                # Respuesta del usuario
+                pdf.set_font("Arial", '', 10); pdf.set_text_color(0, 0, 0)
+                pdf.multi_cell(0, 6, clean_pdf(f"Resultado: {r_text}"))
+                
+                # Buscar recomendación en el Word de respuestas
+                ids = sorted(list(set(re.findall(r'(\d+\.[a-z])', r_text.lower()))))
+                for id_s in ids:
+                    m_s = df_rec[df_rec['Clave'].str.lower() == id_s]
+                    if not m_s.empty:
+                        txt_s = m_s.iloc[0]['Contenido'].strip()
+                        pdf.ln(1); pdf.set_font("Arial", 'I', 9); pdf.set_text_color(0, 85, 165)
+                        pdf.multi_cell(0, 6, clean_pdf(f"Recomendacion ({id_s}): {txt_s}"), 1)
+                pdf.ln(4)
+
+            # Botón de descarga con los datos reales
+            st.success("✅ Informe generado exitosamente.")
+            st.download_button(
+                label="📥 CLIC AQUÍ PARA DESCARGAR EL REPORTE",
+                data=pdf.output(dest='S').encode('latin-1', 'replace'),
+                file_name=f"Reporte_Cyber_{st.session_state.datos_usuario['Empresa']}.pdf",
+                mime="application/pdf"
+            )
         else:
-            st.warning("Seleccione una opción para habilitar la descarga.")
+            st.warning("Seleccione una opción de contacto para habilitar la descarga.")
