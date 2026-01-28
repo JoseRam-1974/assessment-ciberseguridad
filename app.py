@@ -11,13 +11,7 @@ st.set_page_config(page_title="SecureSoft GTD | Assessment Digital", page_icon="
 st.markdown("""
     <style>
     .stApp { background-color: #0b111b; color: #ffffff; }
-    
-    .cyber-main-title { 
-        color: #ffffff; 
-        font-weight: 700; 
-        font-size: 2.2rem; 
-        margin-bottom: 30px; 
-    }
+    .cyber-main-title { color: #ffffff; font-weight: 700; font-size: 2.2rem; margin-bottom: 30px; }
 
     /* VISIBILIDAD DE OPCIONES: TEXTO EN BLANCO */
     div[data-testid="stMarkdownContainer"] p, 
@@ -89,7 +83,6 @@ def clean_pdf(txt):
     rep = {"á":"a","é":"e","í":"i","ó":"o","ú":"u","ñ":"n","Á":"A","É":"E","Í":"I","Ó":"O","Ú":"U","Ñ":"N","¿":"","¡":"","–":"-"}
     t = str(txt)
     for a, b in rep.items(): t = t.replace(a, b)
-    # Ignorar caracteres que no encajen en latin-1 para evitar que el PDF se rompa
     return t.encode('latin-1', 'ignore').decode('latin-1')
 
 class PDF(FPDF):
@@ -158,7 +151,7 @@ elif st.session_state.etapa == 'preguntas':
                     st.session_state.etapa = 'resultado'
                     st.rerun()
 
-# --- 6. ETAPA 3: REPORTE Y DESCARGA REAL ---
+# --- 6. ETAPA 3: REPORTE Y DESCARGA ---
 elif st.session_state.etapa == 'resultado':
     st.markdown('<p class="cyber-main-title">✅ Evaluación Finalizada</p>', unsafe_allow_html=True)
     
@@ -172,20 +165,19 @@ elif st.session_state.etapa == 'resultado':
     opcion_contacto = st.radio(
         "¿Cómo desea recibir su informe estratégico?",
         [
-            "Deseo una sesión de consultoría gratuita para revisar el reporte con un experto.",
-            "Solo deseo descargar el informe en PDF por ahora."
+            "Deseo una sesión de consultoría gratuita para revisar el reporte con un experto de SecureSoft.",
+            "Solo deseo descargar el informe por el momento."
         ],
         index=None
     )
 
     if st.button("GENERAR REPORTE PDF", type="primary"):
         if opcion_contacto:
+            # 1. GENERACIÓN DEL PDF
             df_rec = leer_word("02. Respuestas.docx")
             pdf = PDF()
             pdf.set_auto_page_break(auto=True, margin=15)
             pdf.add_page()
-            
-            # Título del Reporte
             pdf.set_font("Arial", 'B', 14)
             pdf.cell(190, 10, clean_pdf(f"REPORTE DE CIBERSEGURIDAD: {st.session_state.datos_usuario['Empresa']}"), 0, 1, 'C')
             pdf.ln(5)
@@ -194,15 +186,13 @@ elif st.session_state.etapa == 'resultado':
                 p_text = st.session_state.preguntas_texto[i]
                 r_text = st.session_state.respuestas_texto[i]
                 
-                # Pregunta - Usamos 190 para evitar el error de espacio horizontal
+                # CORRECCIÓN "Not enough horizontal space": Usamos ancho 190 en vez de 0
                 pdf.set_font("Arial", 'B', 10); pdf.set_text_color(50, 50, 50)
                 pdf.multi_cell(190, 6, clean_pdf(f"Pregunta {i+1}: {p_text}"))
                 
-                # Respuesta del usuario
                 pdf.set_font("Arial", '', 10); pdf.set_text_color(0, 0, 0)
                 pdf.multi_cell(190, 6, clean_pdf(f"Resultado: {r_text}"))
                 
-                # Buscar recomendación
                 ids = sorted(list(set(re.findall(r'(\d+\.[a-z])', r_text.lower()))))
                 for id_s in ids:
                     m_s = df_rec[df_rec['Clave'].str.lower() == id_s]
@@ -212,17 +202,19 @@ elif st.session_state.etapa == 'resultado':
                         pdf.multi_cell(180, 6, clean_pdf(f"Recomendacion ({id_s}): {txt_s}"), 1)
                 pdf.ln(4)
 
-            # Generación de la salida de datos para descarga
+            # 2. PROCESAMIENTO DE SALIDA (Solución definitiva a los errores de captura)
             try:
-                # Intenta el método tradicional de tu código original
-                pdf_output = pdf.output(dest='S')
-                # Si es fpdf2, pdf_output ya son bytes. Si es fpdf antigua, requiere encode.
-                data_output = pdf_output.encode('latin-1', 'replace') if isinstance(pdf_output, str) else pdf_output
+                # En fpdf2, output() devuelve bytes. NO usar .encode() ni dest='S'
+                pdf_bytes = pdf.output()
                 
+                # Si el resultado es bytearray (como muestra tu captura), lo convertimos a bytes
+                if isinstance(pdf_bytes, bytearray):
+                    pdf_bytes = bytes(pdf_bytes)
+
                 st.success("✅ Informe generado exitosamente.")
                 st.download_button(
                     label="📥 CLIC AQUÍ PARA DESCARGAR EL REPORTE",
-                    data=data_output,
+                    data=pdf_bytes,
                     file_name=f"Reporte_Cyber_{st.session_state.datos_usuario['Empresa']}.pdf",
                     mime="application/pdf"
                 )
