@@ -47,10 +47,11 @@ class PDF(FPDF):
     def header(self):
         logo = 'Logotipo-SECURESOFT-GTD-Color-Fondo-Transparente.png'
         if os.path.exists(logo):
-            self.image(logo, 15, 10, 45) # Movido un poco a la derecha
+            self.image(logo, 15, 10, 40)
         self.set_font('Arial', 'B', 10)
         self.set_text_color(0, 85, 165)
-        self.cell(0, 10, 'ASSESSMENT DIGITAL ESTADO DE CIBERSEGURIDAD', 0, 1, 'R')
+        self.set_xy(100, 10)
+        self.cell(95, 10, 'ASSESSMENT DIGITAL ESTADO DE CIBERSEGURIDAD', 0, 1, 'R')
         self.ln(20)
 
 # --- 3. GESTIÓN DE ESTADOS ---
@@ -117,39 +118,44 @@ elif st.session_state.etapa == 'resultado':
             df_rec = leer_word("02. Respuestas.docx")
             pdf = PDF()
             
-            # --- CORRECCIÓN DE MÁRGENES ---
+            # CONFIGURACIÓN DE PÁGINA ESTRICTA
             pdf.set_margins(left=15, top=15, right=15) 
-            pdf.set_auto_page_break(auto=True, margin=20)
+            pdf.set_auto_page_break(auto=True, margin=25)
             pdf.add_page()
             
             pdf.set_font("Arial", 'B', 14)
             pdf.cell(180, 10, clean_pdf(f"REPORTE DE CIBERSEGURIDAD: {st.session_state.datos_usuario['Empresa']}"), 0, 1, 'C')
             pdf.ln(5)
 
-            # Ancho de celda seguro: 180mm (para que no se corte a la derecha)
-            ancho_seguro = 180 
+            # ANCHO SEGURO REDUCIDO PARA EVITAR EL BORDE DERECHO
+            ancho_contenido = 170 
 
             for i in range(len(st.session_state.preguntas_texto)):
                 p_text = st.session_state.preguntas_texto[i]
                 r_text = st.session_state.respuestas_texto[i]
                 
                 # Pregunta
+                pdf.set_x(15) # Asegurar retorno al margen izquierdo
                 pdf.set_font("Arial", 'B', 10); pdf.set_text_color(50, 50, 50)
-                pdf.multi_cell(ancho_seguro, 6, clean_pdf(f"Pregunta {i+1}: {p_text}"))
+                pdf.multi_cell(ancho_contenido, 6, clean_pdf(f"Pregunta {i+1}: {p_text}"), border=0, align='L')
                 
-                # Resultado (Ajustado para que NO se corte)
+                # Resultado (Aquí es donde se cortaba)
+                pdf.set_x(15) # Forzar posición X al inicio de línea
                 pdf.set_font("Arial", '', 10); pdf.set_text_color(0, 0, 0)
-                pdf.multi_cell(ancho_seguro, 6, clean_pdf(f"Resultado: {r_text}"))
+                pdf.multi_cell(ancho_contenido, 6, clean_pdf(f"Resultado: {r_text}"), border=0, align='L')
                 
-                # Recomendación
+                # Recomendaciones (Caja con bordes)
                 ids = sorted(list(set(re.findall(r'(\d+\.[a-z])', r_text.lower()))))
                 for id_s in ids:
                     m_s = df_rec[df_rec['Clave'].str.lower() == id_s]
                     if not m_s.empty:
                         txt_s = m_s.iloc[0]['Contenido'].strip()
-                        pdf.ln(1); pdf.set_font("Arial", 'I', 9); pdf.set_text_color(0, 85, 165)
-                        pdf.multi_cell(ancho_seguro - 10, 6, clean_pdf(f"Recomendacion ({id_s}): {txt_s}"), 1)
-                pdf.ln(6) # Más espacio entre bloques para evitar amontonamiento
+                        pdf.ln(1)
+                        pdf.set_x(20) # Indentación para recomendación
+                        pdf.set_font("Arial", 'I', 9); pdf.set_text_color(0, 85, 165)
+                        pdf.multi_cell(ancho_contenido - 5, 5, clean_pdf(f"Recomendacion ({id_s}): {txt_s}"), border=1)
+                
+                pdf.ln(8) # Espacio entre bloques
 
             try:
                 pdf_bytes = pdf.output()
