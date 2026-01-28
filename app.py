@@ -89,6 +89,7 @@ def clean_pdf(txt):
     rep = {"á":"a","é":"e","í":"i","ó":"o","ú":"u","ñ":"n","Á":"A","É":"E","Í":"I","Ó":"O","Ú":"U","Ñ":"N","¿":"","¡":"","–":"-"}
     t = str(txt)
     for a, b in rep.items(): t = t.replace(a, b)
+    # Ignorar caracteres que no encajen en latin-1 para evitar que el PDF se rompa
     return t.encode('latin-1', 'ignore').decode('latin-1')
 
 class PDF(FPDF):
@@ -179,43 +180,53 @@ elif st.session_state.etapa == 'resultado':
 
     if st.button("GENERAR REPORTE PDF", type="primary"):
         if opcion_contacto:
-            # --- GENERACIÓN REAL DEL PDF ---
             df_rec = leer_word("02. Respuestas.docx")
             pdf = PDF()
+            pdf.set_auto_page_break(auto=True, margin=15)
             pdf.add_page()
+            
+            # Título del Reporte
             pdf.set_font("Arial", 'B', 14)
-            pdf.cell(0, 10, clean_pdf(f"REPORTE DE CIBERSEGURIDAD: {st.session_state.datos_usuario['Empresa']}"), 0, 1)
+            pdf.cell(190, 10, clean_pdf(f"REPORTE DE CIBERSEGURIDAD: {st.session_state.datos_usuario['Empresa']}"), 0, 1, 'C')
             pdf.ln(5)
 
             for i in range(len(st.session_state.preguntas_texto)):
                 p_text = st.session_state.preguntas_texto[i]
                 r_text = st.session_state.respuestas_texto[i]
                 
-                # Pregunta
+                # Pregunta - Usamos 190 para evitar el error de espacio horizontal
                 pdf.set_font("Arial", 'B', 10); pdf.set_text_color(50, 50, 50)
-                pdf.multi_cell(0, 6, clean_pdf(f"Pregunta {i+1}: {p_text}"))
+                pdf.multi_cell(190, 6, clean_pdf(f"Pregunta {i+1}: {p_text}"))
                 
                 # Respuesta del usuario
                 pdf.set_font("Arial", '', 10); pdf.set_text_color(0, 0, 0)
-                pdf.multi_cell(0, 6, clean_pdf(f"Resultado: {r_text}"))
+                pdf.multi_cell(190, 6, clean_pdf(f"Resultado: {r_text}"))
                 
-                # Buscar recomendación en el Word de respuestas
+                # Buscar recomendación
                 ids = sorted(list(set(re.findall(r'(\d+\.[a-z])', r_text.lower()))))
                 for id_s in ids:
                     m_s = df_rec[df_rec['Clave'].str.lower() == id_s]
                     if not m_s.empty:
                         txt_s = m_s.iloc[0]['Contenido'].strip()
                         pdf.ln(1); pdf.set_font("Arial", 'I', 9); pdf.set_text_color(0, 85, 165)
-                        pdf.multi_cell(0, 6, clean_pdf(f"Recomendacion ({id_s}): {txt_s}"), 1)
+                        pdf.multi_cell(180, 6, clean_pdf(f"Recomendacion ({id_s}): {txt_s}"), 1)
                 pdf.ln(4)
 
-            # Botón de descarga con los datos reales
-            st.success("✅ Informe generado exitosamente.")
-            st.download_button(
-                label="📥 CLIC AQUÍ PARA DESCARGAR EL REPORTE",
-                data=pdf.output(dest='S').encode('latin-1', 'replace'),
-                file_name=f"Reporte_Cyber_{st.session_state.datos_usuario['Empresa']}.pdf",
-                mime="application/pdf"
-            )
+            # Generación de la salida de datos para descarga
+            try:
+                # Intenta el método tradicional de tu código original
+                pdf_output = pdf.output(dest='S')
+                # Si es fpdf2, pdf_output ya son bytes. Si es fpdf antigua, requiere encode.
+                data_output = pdf_output.encode('latin-1', 'replace') if isinstance(pdf_output, str) else pdf_output
+                
+                st.success("✅ Informe generado exitosamente.")
+                st.download_button(
+                    label="📥 CLIC AQUÍ PARA DESCARGAR EL REPORTE",
+                    data=data_output,
+                    file_name=f"Reporte_Cyber_{st.session_state.datos_usuario['Empresa']}.pdf",
+                    mime="application/pdf"
+                )
+            except Exception as e:
+                st.error(f"Error técnico al preparar la descarga: {e}")
         else:
             st.warning("Seleccione una opción de contacto para habilitar la descarga.")
